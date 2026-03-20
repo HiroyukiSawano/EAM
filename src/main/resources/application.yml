@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: asset-center
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+  datasource:
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+    url: ${DB_URL:jdbc:h2:mem:eam;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;NON_KEYWORDS=VALUE}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+  flyway:
+    enabled: true
+  jackson:
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+server:
+  port: 8080
+
+springdoc:
+  swagger-ui:
+    enabled: false
