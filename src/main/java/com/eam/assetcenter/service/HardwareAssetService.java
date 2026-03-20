@@ -32,6 +32,7 @@ import com.eam.assetcenter.web.request.HardwareBatchImportRequest;
 import com.eam.assetcenter.web.request.HardwareLifecycleRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -64,6 +65,7 @@ public class HardwareAssetService {
     /**
      * 新增资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public AssetHardware create(HardwareAssetUpsertRequest request) {
         supportService.ensureUniqueAssetCode(request.getAssetCode(), null);
         supportService.ensureDepartmentExists(request.getDepartmentId());
@@ -80,6 +82,7 @@ public class HardwareAssetService {
     /**
      * 更新指定主键对应的资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public AssetHardware update(Long id, HardwareAssetUpsertRequest request) {
         AssetHardware existing = getById(id);
         supportService.ensureUniqueAssetCode(request.getAssetCode(), id);
@@ -148,6 +151,7 @@ public class HardwareAssetService {
     /**
      * 同步硬件与信息系统之间的关联关系。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void syncSystems(Long id, List<Long> systemIds) {
         getById(id);
         List<Long> safeIds = systemIds == null ? Collections.<Long>emptyList() : systemIds;
@@ -167,6 +171,7 @@ public class HardwareAssetService {
     /**
      * 同步硬件负责人的关联关系。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void syncOwners(Long id, List<Long> ownerIds) {
         getById(id);
         List<Long> safeIds = ownerIds == null ? Collections.<Long>emptyList() : ownerIds;
@@ -192,6 +197,7 @@ public class HardwareAssetService {
     /**
      * 同步硬件与服务商之间的关联关系。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void syncVendors(Long id, List<Long> vendorIds) {
         getById(id);
         List<Long> safeIds = vendorIds == null ? Collections.<Long>emptyList() : vendorIds;
@@ -211,6 +217,7 @@ public class HardwareAssetService {
     /**
      * 执行硬件生命周期流转动作。
      */
+    @Transactional(rollbackFor = Exception.class)
     public AssetHardware executeLifecycle(Long id, HardwareLifecycleRequest request) {
         AssetHardware assetHardware = getById(id);
         HardwareStatus currentStatus = HardwareStatus.valueOf(assetHardware.getHardwareStatus());
@@ -227,6 +234,7 @@ public class HardwareAssetService {
     /**
      * 批量导入硬件资产。
      */
+    @Transactional(rollbackFor = Exception.class)
     public List<AssetHardware> batchImport(HardwareBatchImportRequest request) {
         return request.getItems().stream().map(this::create).collect(Collectors.toList());
     }
@@ -254,12 +262,25 @@ public class HardwareAssetService {
     }
 
     /**
-     * 删除指定主键对应的资源记录。
+     * 删除指定主键对应的资源记录，同时级联清理子类型表、关联表和生命周期记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        getById(id);
+        AssetHardware existing = getById(id);
+        // 清理子类型扩展表
+        serverMapper.delete(new LambdaQueryWrapper<AssetHardwareServer>().eq(AssetHardwareServer::getHardwareAssetId, id));
+        queryTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareQueryTerminal>().eq(AssetHardwareQueryTerminal::getHardwareAssetId, id));
+        ticketTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareTicketTerminal>().eq(AssetHardwareTicketTerminal::getHardwareAssetId, id));
+        selfServiceTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareSelfServiceTerminal>().eq(AssetHardwareSelfServiceTerminal::getHardwareAssetId, id));
+        // 清理关联关系表
+        hardwareSystemRelMapper.delete(new LambdaQueryWrapper<AssetHardwareSystemRel>().eq(AssetHardwareSystemRel::getHardwareAssetId, id));
+        hardwarePersonRelMapper.delete(new LambdaQueryWrapper<AssetHardwarePersonRel>().eq(AssetHardwarePersonRel::getHardwareAssetId, id));
+        hardwareVendorRelMapper.delete(new LambdaQueryWrapper<AssetHardwareVendorRel>().eq(AssetHardwareVendorRel::getHardwareAssetId, id));
+        // 清理生命周期记录
+        assetLifecycleRecordMapper.delete(new LambdaQueryWrapper<AssetLifecycleRecord>().eq(AssetLifecycleRecord::getHardwareAssetId, id));
+        // 删除主记录
         assetHardwareMapper.deleteById(id);
-        auditService.record("HARDWARE_ASSET", id, AuditActionType.DELETE, "Deleted hardware asset " + id, "SYSTEM");
+        auditService.record("HARDWARE_ASSET", id, AuditActionType.DELETE, "Deleted hardware asset " + existing.getAssetCode(), "SYSTEM");
     }
 
     private AssetHardware toAsset(HardwareAssetUpsertRequest request) {

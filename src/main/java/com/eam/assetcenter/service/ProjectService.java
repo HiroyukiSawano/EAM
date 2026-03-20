@@ -19,6 +19,7 @@ import com.eam.assetcenter.infrastructure.mapper.ProjectVendorRelMapper;
 import com.eam.assetcenter.web.request.ProjectRelationRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,6 +45,7 @@ public class ProjectService {
     /**
      * 新增资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public ProjectInfo create(ProjectInfo projectInfo) {
         supportService.ensureUniqueProjectCode(projectInfo.getCode(), null);
         projectInfoMapper.insert(projectInfo);
@@ -54,6 +56,7 @@ public class ProjectService {
     /**
      * 更新指定主键对应的资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public ProjectInfo update(Long id, ProjectInfo projectInfo) {
         getById(id);
         supportService.ensureUniqueProjectCode(projectInfo.getCode(), id);
@@ -118,6 +121,7 @@ public class ProjectService {
     /**
      * 同步资源的关联关系数据。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void syncRelations(Long id, ProjectRelationRequest request) {
         getById(id);
         List<Long> informationSystemIds = request.getInformationSystemIds() == null ? Collections.<Long>emptyList() : request.getInformationSystemIds();
@@ -175,12 +179,19 @@ public class ProjectService {
     }
 
     /**
-     * 删除指定主键对应的资源记录。
+     * 删除指定主键对应的资源记录，同时级联清理所有关联表。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        getById(id);
+        ProjectInfo existing = getById(id);
+        // 清理关联关系表
+        projectSystemRelMapper.delete(new LambdaQueryWrapper<ProjectSystemRel>().eq(ProjectSystemRel::getProjectId, id));
+        projectVendorRelMapper.delete(new LambdaQueryWrapper<ProjectVendorRel>().eq(ProjectVendorRel::getProjectId, id));
+        projectPersonRelMapper.delete(new LambdaQueryWrapper<ProjectPersonRel>().eq(ProjectPersonRel::getProjectId, id));
+        projectHardwareRelMapper.delete(new LambdaQueryWrapper<ProjectHardwareRel>().eq(ProjectHardwareRel::getProjectId, id));
+        // 删除主记录
         projectInfoMapper.deleteById(id);
-        auditService.record("PROJECT", id, AuditActionType.DELETE, "Deleted project " + id, "SYSTEM");
+        auditService.record("PROJECT", id, AuditActionType.DELETE, "Deleted project " + existing.getCode(), "SYSTEM");
     }
 }
 

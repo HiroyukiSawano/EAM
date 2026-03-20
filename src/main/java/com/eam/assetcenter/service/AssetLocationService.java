@@ -5,10 +5,13 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.common.enums.AuditActionType;
 import com.eam.assetcenter.common.exception.BusinessException;
+import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.domain.entity.AssetLocation;
+import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetLocationMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 资产位置业务服务，负责位置主数据维护。
@@ -18,12 +21,14 @@ import org.springframework.stereotype.Service;
 public class AssetLocationService {
 
     private final AssetLocationMapper assetLocationMapper;
+    private final AssetHardwareMapper assetHardwareMapper;
     private final SupportService supportService;
     private final AuditService auditService;
 
     /**
      * 新增资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public AssetLocation create(AssetLocation assetLocation) {
         supportService.ensureUniqueLocationCode(assetLocation.getCode(), null);
         assetLocationMapper.insert(assetLocation);
@@ -34,6 +39,7 @@ public class AssetLocationService {
     /**
      * 更新指定主键对应的资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public AssetLocation update(Long id, AssetLocation assetLocation) {
         getById(id);
         supportService.ensureUniqueLocationCode(assetLocation.getCode(), id);
@@ -66,10 +72,16 @@ public class AssetLocationService {
     }
 
     /**
-     * 删除指定主键对应的资源记录。
+     * 删除指定主键对应的资源记录，删除前检查是否被硬件资产引用。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         getById(id);
+        // 检查是否被硬件资产引用
+        Long hardwareCount = assetHardwareMapper.selectCount(new LambdaQueryWrapper<AssetHardware>().eq(AssetHardware::getLocationId, id));
+        if (hardwareCount > 0) {
+            throw new BusinessException("该位置下仍有 " + hardwareCount + " 件硬件资产，无法删除");
+        }
         assetLocationMapper.deleteById(id);
         auditService.record("LOCATION", id, AuditActionType.DELETE, "Deleted location " + id, "SYSTEM");
     }

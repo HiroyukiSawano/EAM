@@ -15,6 +15,7 @@ import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +39,7 @@ public class ServiceProviderService {
     /**
      * 新增资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public ServiceProvider create(ServiceProvider serviceProvider) {
         supportService.ensureUniqueServiceProviderCode(serviceProvider.getCode(), null);
         serviceProviderMapper.insert(serviceProvider);
@@ -48,6 +50,7 @@ public class ServiceProviderService {
     /**
      * 更新指定主键对应的资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public ServiceProvider update(Long id, ServiceProvider serviceProvider) {
         getById(id);
         supportService.ensureUniqueServiceProviderCode(serviceProvider.getCode(), id);
@@ -107,10 +110,26 @@ public class ServiceProviderService {
     }
 
     /**
-     * 删除指定主键对应的资源记录。
+     * 删除指定主键对应的资源记录，删除前检查是否被关联表引用。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         getById(id);
+        // 检查是否被硬件资产引用
+        Long hwCount = hardwareVendorRelMapper.selectCount(new LambdaQueryWrapper<AssetHardwareVendorRel>().eq(AssetHardwareVendorRel::getServiceProviderId, id));
+        if (hwCount > 0) {
+            throw new BusinessException("该服务商仍被 " + hwCount + " 件硬件资产关联，无法删除");
+        }
+        // 检查是否被信息系统引用
+        Long sysCount = systemVendorRelMapper.selectCount(new LambdaQueryWrapper<SystemVendorRel>().eq(SystemVendorRel::getServiceProviderId, id));
+        if (sysCount > 0) {
+            throw new BusinessException("该服务商仍被 " + sysCount + " 个信息系统关联，无法删除");
+        }
+        // 检查是否被项目引用
+        Long projCount = projectVendorRelMapper.selectCount(new LambdaQueryWrapper<ProjectVendorRel>().eq(ProjectVendorRel::getServiceProviderId, id));
+        if (projCount > 0) {
+            throw new BusinessException("该服务商仍被 " + projCount + " 个项目关联，无法删除");
+        }
         serviceProviderMapper.deleteById(id);
         auditService.record("SERVICE_PROVIDER", id, AuditActionType.DELETE, "Deleted provider " + id, "SYSTEM");
     }

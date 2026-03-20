@@ -6,10 +6,12 @@ import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.common.enums.AuditActionType;
 import com.eam.assetcenter.common.enums.PersonRelationType;
 import com.eam.assetcenter.common.exception.BusinessException;
+import com.eam.assetcenter.domain.entity.AssetHardwareSystemRel;
 import com.eam.assetcenter.domain.entity.InformationSystem;
 import com.eam.assetcenter.domain.entity.ProjectSystemRel;
 import com.eam.assetcenter.domain.entity.SystemPersonRel;
 import com.eam.assetcenter.domain.entity.SystemVendorRel;
+import com.eam.assetcenter.infrastructure.mapper.AssetHardwareSystemRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.InformationSystemMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectSystemRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemPersonRelMapper;
@@ -17,6 +19,7 @@ import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
 import com.eam.assetcenter.web.request.InformationSystemRelationRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,12 +38,14 @@ public class InformationSystemService {
     private final SystemVendorRelMapper systemVendorRelMapper;
     private final SystemPersonRelMapper systemPersonRelMapper;
     private final ProjectSystemRelMapper projectSystemRelMapper;
+    private final AssetHardwareSystemRelMapper hardwareSystemRelMapper;
     private final SupportService supportService;
     private final AuditService auditService;
 
     /**
      * 新增资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public InformationSystem create(InformationSystem informationSystem) {
         supportService.ensureUniqueSystemCode(informationSystem.getCode(), null);
         informationSystemMapper.insert(informationSystem);
@@ -52,6 +57,7 @@ public class InformationSystemService {
     /**
      * 更新指定主键对应的资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public InformationSystem update(Long id, InformationSystem informationSystem) {
         getById(id);
         supportService.ensureUniqueSystemCode(informationSystem.getCode(), id);
@@ -116,6 +122,7 @@ public class InformationSystemService {
     /**
      * 同步资源的关联关系数据。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void syncRelations(Long id, InformationSystemRelationRequest request) {
         getById(id);
         List<Long> serviceProviderIds = request.getServiceProviderIds() == null ? Collections.<Long>emptyList() : request.getServiceProviderIds();
@@ -161,12 +168,19 @@ public class InformationSystemService {
     }
 
     /**
-     * 删除指定主键对应的资源记录。
+     * 删除指定主键对应的资源记录，同时级联清理所有关联表。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        getById(id);
+        InformationSystem existing = getById(id);
+        // 清理关联关系表
+        systemVendorRelMapper.delete(new LambdaQueryWrapper<SystemVendorRel>().eq(SystemVendorRel::getInformationSystemId, id));
+        systemPersonRelMapper.delete(new LambdaQueryWrapper<SystemPersonRel>().eq(SystemPersonRel::getInformationSystemId, id));
+        projectSystemRelMapper.delete(new LambdaQueryWrapper<ProjectSystemRel>().eq(ProjectSystemRel::getInformationSystemId, id));
+        hardwareSystemRelMapper.delete(new LambdaQueryWrapper<AssetHardwareSystemRel>().eq(AssetHardwareSystemRel::getInformationSystemId, id));
+        // 删除主记录
         informationSystemMapper.deleteById(id);
-        auditService.record("INFORMATION_SYSTEM", id, AuditActionType.DELETE, "Deleted information system " + id, "SYSTEM");
+        auditService.record("INFORMATION_SYSTEM", id, AuditActionType.DELETE, "Deleted information system " + existing.getCode(), "SYSTEM");
     }
 }
 

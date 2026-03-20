@@ -15,6 +15,7 @@ import com.eam.assetcenter.infrastructure.mapper.ProjectPersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemPersonRelMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -38,6 +39,7 @@ public class PersonService {
     /**
      * 新增资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public Person create(Person person) {
         supportService.ensureDepartmentExists(person.getDepartmentId());
         personMapper.insert(person);
@@ -48,6 +50,7 @@ public class PersonService {
     /**
      * 更新指定主键对应的资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public Person update(Long id, Person person) {
         getById(id);
         supportService.ensureDepartmentExists(person.getDepartmentId());
@@ -107,10 +110,26 @@ public class PersonService {
     }
 
     /**
-     * 删除指定主键对应的资源记录。
+     * 删除指定主键对应的资源记录，删除前检查是否被关联表引用。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         getById(id);
+        // 检查是否被硬件资产引用
+        Long hwCount = hardwarePersonRelMapper.selectCount(new LambdaQueryWrapper<AssetHardwarePersonRel>().eq(AssetHardwarePersonRel::getPersonId, id));
+        if (hwCount > 0) {
+            throw new BusinessException("该人员仍被 " + hwCount + " 件硬件资产关联，无法删除");
+        }
+        // 检查是否被信息系统引用
+        Long sysCount = systemPersonRelMapper.selectCount(new LambdaQueryWrapper<SystemPersonRel>().eq(SystemPersonRel::getPersonId, id));
+        if (sysCount > 0) {
+            throw new BusinessException("该人员仍被 " + sysCount + " 个信息系统关联，无法删除");
+        }
+        // 检查是否被项目引用
+        Long projCount = projectPersonRelMapper.selectCount(new LambdaQueryWrapper<ProjectPersonRel>().eq(ProjectPersonRel::getPersonId, id));
+        if (projCount > 0) {
+            throw new BusinessException("该人员仍被 " + projCount + " 个项目关联，无法删除");
+        }
         personMapper.deleteById(id);
         auditService.record("PERSON", id, AuditActionType.DELETE, "Deleted person " + id, "SYSTEM");
     }

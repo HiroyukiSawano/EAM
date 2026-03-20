@@ -5,10 +5,15 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.common.enums.AuditActionType;
 import com.eam.assetcenter.common.exception.BusinessException;
+import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.domain.entity.Department;
+import com.eam.assetcenter.domain.entity.Person;
+import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.DepartmentMapper;
+import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -20,12 +25,15 @@ import java.util.List;
 public class DepartmentService {
 
     private final DepartmentMapper departmentMapper;
+    private final PersonMapper personMapper;
+    private final AssetHardwareMapper assetHardwareMapper;
     private final SupportService supportService;
     private final AuditService auditService;
 
     /**
      * 新增资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public Department create(Department department) {
         supportService.ensureUniqueDepartmentCode(department.getCode(), null);
         departmentMapper.insert(department);
@@ -36,6 +44,7 @@ public class DepartmentService {
     /**
      * 更新指定主键对应的资源记录。
      */
+    @Transactional(rollbackFor = Exception.class)
     public Department update(Long id, Department department) {
         Department existing = getById(id);
         supportService.ensureUniqueDepartmentCode(department.getCode(), id);
@@ -75,10 +84,21 @@ public class DepartmentService {
     }
 
     /**
-     * 删除指定主键对应的资源记录。
+     * 删除指定主键对应的资源记录，删除前检查是否被人员或硬件资产引用。
      */
+    @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         getById(id);
+        // 检查是否被人员引用
+        Long personCount = personMapper.selectCount(new LambdaQueryWrapper<Person>().eq(Person::getDepartmentId, id));
+        if (personCount > 0) {
+            throw new BusinessException("该部门下仍有 " + personCount + " 名人员，无法删除");
+        }
+        // 检查是否被硬件资产引用
+        Long hardwareCount = assetHardwareMapper.selectCount(new LambdaQueryWrapper<AssetHardware>().eq(AssetHardware::getDepartmentId, id));
+        if (hardwareCount > 0) {
+            throw new BusinessException("该部门下仍有 " + hardwareCount + " 件硬件资产，无法删除");
+        }
         departmentMapper.deleteById(id);
         auditService.record("DEPARTMENT", id, AuditActionType.DELETE, "Deleted department " + id, "SYSTEM");
     }
