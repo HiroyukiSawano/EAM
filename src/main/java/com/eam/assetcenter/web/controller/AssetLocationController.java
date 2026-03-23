@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * 资产位置控制器，提供位置主数据接口。
  */
@@ -65,6 +67,15 @@ public class AssetLocationController {
                                                          @RequestParam(defaultValue = "10") int pageSize,
                                                          @RequestParam(required = false) String keyword) {
         return ApiResponse.success(assetLocationService.page(pageNo, pageSize, keyword));
+    }
+
+    /**
+     * 查询可用于下拉选择的资源列表。
+     */
+    @Operation(summary = "查询资产位置下拉选项")
+    @GetMapping("/options")
+    public ApiResponse<List<AssetLocation>> options() {
+        return ApiResponse.success(assetLocationService.options());
     }
 
     /**

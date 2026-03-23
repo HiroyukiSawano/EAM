@@ -83,6 +83,15 @@ public class HardwareAssetController {
     }
 
     /**
+     * 查询可用于下拉选择的资源列表。
+     */
+    @Operation(summary = "查询硬件资产下拉选项")
+    @GetMapping("/options")
+    public ApiResponse<List<AssetHardware>> options() {
+        return ApiResponse.success(hardwareAssetService.options());
+    }
+
+    /**
      * 同步硬件与信息系统之间的关联关系。
      */
     @Operation(summary = "同步硬件关联系统")

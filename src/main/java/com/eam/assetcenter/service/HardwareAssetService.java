@@ -149,6 +149,14 @@ public class HardwareAssetService {
     }
 
     /**
+     * 查询可用于下拉选择的硬件资产列表。
+     */
+    public List<AssetHardware> options() {
+        return assetHardwareMapper.selectList(new LambdaQueryWrapper<AssetHardware>()
+                .orderByAsc(AssetHardware::getAssetCode));
+    }
+
+    /**
      * 同步硬件与信息系统之间的关联关系。
      */
     @Transactional(rollbackFor = Exception.class)

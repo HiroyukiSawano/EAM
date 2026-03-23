@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 /**
  * 资产位置业务服务，负责位置主数据维护。
  */
@@ -69,6 +71,14 @@ public class AssetLocationService {
                         q -> q.like(AssetLocation::getCode, keyword).or().like(AssetLocation::getName, keyword))
                 .orderByAsc(AssetLocation::getCode);
         return PageResponse.from(assetLocationMapper.selectPage(new Page<AssetLocation>(pageNo, pageSize), wrapper));
+    }
+
+    /**
+     * 查询可用于下拉选择的位置列表。
+     */
+    public List<AssetLocation> options() {
+        return assetLocationMapper.selectList(new LambdaQueryWrapper<AssetLocation>()
+                .orderByAsc(AssetLocation::getCode));
     }
 
     /**
