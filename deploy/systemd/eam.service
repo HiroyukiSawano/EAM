@@ -1,0 +1,15 @@
+[Unit]
+Description=EAM Asset Center Backend
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=eam
+WorkingDirectory=/opt/eam/backend
+ExecStart=/usr/bin/java -jar /opt/eam/backend/eam-app.jar --spring.profiles.active=prod --spring.config.additional-location=file:/opt/eam/backend/config/
+SuccessExitStatus=143
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

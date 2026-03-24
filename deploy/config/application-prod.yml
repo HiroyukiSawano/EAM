@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/eam?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
+    username: root
+    password: 123456
+    # H2 本地内存库示例（仅开发调试使用，正式部署仍推荐 MySQL）
+    # driver-class-name: org.h2.Driver
+    # url: jdbc:h2:mem:eam;MODE=MYSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    # username: sa
+    # password:
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 3
+
+logging:
+  level:
+    root: INFO
+    com.eam.assetcenter: INFO
+  file:
+    path: ./logs
