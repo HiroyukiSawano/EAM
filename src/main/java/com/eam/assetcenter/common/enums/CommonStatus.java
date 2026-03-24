@@ -1,21 +1,17 @@
 package com.eam.assetcenter.common.enums;
 
 /**
- * 项目状态枚举。
+ * 通用资源状态枚举。
  */
-public enum ProjectStatus implements StatusDictionaryEnum {
-    PLANNING("规划中", "Planning", "info"),
-    BUILDING("建设中", "Building", "warning"),
-    DELAYED("延期", "Delayed", "warning"),
-    OPERATING("运行中", "Operating", "success"),
-    TERMINATED("终止", "Terminated", "danger"),
-    FINISHED("已完成", "Finished", "info");
+public enum CommonStatus implements StatusDictionaryEnum {
+    ACTIVE("正常", "Active", "success"),
+    INACTIVE("停用", "Inactive", "info");
 
     private final String label;
     private final String labelEn;
     private final String tagType;
 
-    ProjectStatus(String label, String labelEn, String tagType) {
+    CommonStatus(String label, String labelEn, String tagType) {
         this.label = label;
         this.labelEn = labelEn;
         this.tagType = tagType;
@@ -48,7 +44,7 @@ public enum ProjectStatus implements StatusDictionaryEnum {
         if (value == null || value.trim().isEmpty()) {
             return false;
         }
-        for (ProjectStatus item : values()) {
+        for (CommonStatus item : values()) {
             if (item.name().equals(value)) {
                 return true;
             }
@@ -56,8 +52,3 @@ public enum ProjectStatus implements StatusDictionaryEnum {
         return false;
     }
 }
-
-
-
-
-

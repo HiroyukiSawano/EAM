@@ -7,16 +7,20 @@ import com.eam.assetcenter.common.enums.AuditActionType;
 import com.eam.assetcenter.common.exception.BusinessException;
 import com.eam.assetcenter.domain.entity.AssetHardwareVendorRel;
 import com.eam.assetcenter.domain.entity.ProjectVendorRel;
+import com.eam.assetcenter.domain.entity.ServiceProviderPersonRel;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.domain.entity.SystemVendorRel;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
+import com.eam.assetcenter.infrastructure.mapper.ServiceProviderPersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
+import com.eam.assetcenter.web.request.ServiceProviderRelationRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +37,7 @@ public class ServiceProviderService {
     private final AssetHardwareVendorRelMapper hardwareVendorRelMapper;
     private final SystemVendorRelMapper systemVendorRelMapper;
     private final ProjectVendorRelMapper projectVendorRelMapper;
+    private final ServiceProviderPersonRelMapper serviceProviderPersonRelMapper;
     private final AuditService auditService;
     private final SupportService supportService;
 
@@ -42,6 +47,7 @@ public class ServiceProviderService {
     @Transactional(rollbackFor = Exception.class)
     public ServiceProvider create(ServiceProvider serviceProvider) {
         supportService.ensureUniqueServiceProviderCode(serviceProvider.getCode(), null);
+        supportService.ensureCommonStatusValid(serviceProvider.getStatus(), "服务商");
         serviceProviderMapper.insert(serviceProvider);
         auditService.record("SERVICE_PROVIDER", serviceProvider.getId(), AuditActionType.CREATE, "Created provider " + serviceProvider.getCode(), "SYSTEM");
         return serviceProvider;
@@ -54,6 +60,7 @@ public class ServiceProviderService {
     public ServiceProvider update(Long id, ServiceProvider serviceProvider) {
         getById(id);
         supportService.ensureUniqueServiceProviderCode(serviceProvider.getCode(), id);
+        supportService.ensureCommonStatusValid(serviceProvider.getStatus(), "服务商");
         serviceProvider.setId(id);
         serviceProviderMapper.updateById(serviceProvider);
         auditService.record("SERVICE_PROVIDER", id, AuditActionType.UPDATE, "Updated provider " + serviceProvider.getCode(), "SYSTEM");
@@ -83,6 +90,9 @@ public class ServiceProviderService {
         detail.put("informationSystemIds", systemVendorRelMapper.selectList(
                 new LambdaQueryWrapper<SystemVendorRel>().eq(SystemVendorRel::getServiceProviderId, id))
                 .stream().map(SystemVendorRel::getInformationSystemId).collect(Collectors.toList()));
+        detail.put("personIds", serviceProviderPersonRelMapper.selectList(
+                new LambdaQueryWrapper<ServiceProviderPersonRel>().eq(ServiceProviderPersonRel::getServiceProviderId, id))
+                .stream().map(ServiceProviderPersonRel::getPersonId).collect(Collectors.toList()));
         detail.put("projectIds", projectVendorRelMapper.selectList(
                 new LambdaQueryWrapper<ProjectVendorRel>().eq(ProjectVendorRel::getServiceProviderId, id))
                 .stream().map(ProjectVendorRel::getProjectId).collect(Collectors.toList()));
@@ -93,6 +103,9 @@ public class ServiceProviderService {
      * 按条件分页查询资源列表。
      */
     public PageResponse<ServiceProvider> page(int pageNo, int pageSize, String keyword, String type, String status) {
+        if (status != null && !status.trim().isEmpty()) {
+            supportService.ensureCommonStatusValid(status, "服务商");
+        }
         LambdaQueryWrapper<ServiceProvider> wrapper = new LambdaQueryWrapper<ServiceProvider>()
                 .and(keyword != null && !keyword.trim().isEmpty(),
                         q -> q.like(ServiceProvider::getCode, keyword).or().like(ServiceProvider::getName, keyword))
@@ -106,7 +119,54 @@ public class ServiceProviderService {
      * 查询可用于下拉选择的资源列表。
      */
     public List<ServiceProvider> options() {
-        return serviceProviderMapper.selectList(new LambdaQueryWrapper<ServiceProvider>().eq(ServiceProvider::getStatus, "ACTIVE").orderByAsc(ServiceProvider::getCode));
+        return serviceProviderMapper.selectList(new LambdaQueryWrapper<ServiceProvider>().orderByAsc(ServiceProvider::getCode));
+    }
+
+    /**
+     * 同步服务商的关联关系数据。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void syncRelations(Long id, ServiceProviderRelationRequest request) {
+        getById(id);
+        List<Long> hardwareAssetIds = request.getHardwareAssetIds() == null ? Collections.<Long>emptyList() : request.getHardwareAssetIds();
+        List<Long> informationSystemIds = request.getInformationSystemIds() == null ? Collections.<Long>emptyList() : request.getInformationSystemIds();
+        List<Long> personIds = request.getPersonIds() == null ? Collections.<Long>emptyList() : request.getPersonIds();
+
+        for (Long hardwareAssetId : hardwareAssetIds) {
+            supportService.ensureHardwareExists(hardwareAssetId);
+        }
+        for (Long informationSystemId : informationSystemIds) {
+            supportService.ensureInformationSystemExists(informationSystemId);
+        }
+        for (Long personId : personIds) {
+            supportService.ensurePersonExists(personId);
+        }
+
+        hardwareVendorRelMapper.delete(new LambdaQueryWrapper<AssetHardwareVendorRel>().eq(AssetHardwareVendorRel::getServiceProviderId, id));
+        for (Long hardwareAssetId : hardwareAssetIds) {
+            AssetHardwareVendorRel relation = new AssetHardwareVendorRel();
+            relation.setHardwareAssetId(hardwareAssetId);
+            relation.setServiceProviderId(id);
+            hardwareVendorRelMapper.insert(relation);
+        }
+
+        systemVendorRelMapper.delete(new LambdaQueryWrapper<SystemVendorRel>().eq(SystemVendorRel::getServiceProviderId, id));
+        for (Long informationSystemId : informationSystemIds) {
+            SystemVendorRel relation = new SystemVendorRel();
+            relation.setInformationSystemId(informationSystemId);
+            relation.setServiceProviderId(id);
+            systemVendorRelMapper.insert(relation);
+        }
+
+        serviceProviderPersonRelMapper.delete(new LambdaQueryWrapper<ServiceProviderPersonRel>().eq(ServiceProviderPersonRel::getServiceProviderId, id));
+        for (Long personId : personIds) {
+            ServiceProviderPersonRel relation = new ServiceProviderPersonRel();
+            relation.setServiceProviderId(id);
+            relation.setPersonId(personId);
+            serviceProviderPersonRelMapper.insert(relation);
+        }
+
+        auditService.record("SERVICE_PROVIDER", id, AuditActionType.RELATION_SYNC, "Synchronized service provider relations", "SYSTEM");
     }
 
     /**
@@ -124,6 +184,11 @@ public class ServiceProviderService {
         Long sysCount = systemVendorRelMapper.selectCount(new LambdaQueryWrapper<SystemVendorRel>().eq(SystemVendorRel::getServiceProviderId, id));
         if (sysCount > 0) {
             throw new BusinessException("该服务商仍被 " + sysCount + " 个信息系统关联，无法删除");
+        }
+        // 检查是否被人员引用
+        Long personCount = serviceProviderPersonRelMapper.selectCount(new LambdaQueryWrapper<ServiceProviderPersonRel>().eq(ServiceProviderPersonRel::getServiceProviderId, id));
+        if (personCount > 0) {
+            throw new BusinessException("该服务商仍被 " + personCount + " 名人员关联，无法删除");
         }
         // 检查是否被项目引用
         Long projCount = projectVendorRelMapper.selectCount(new LambdaQueryWrapper<ProjectVendorRel>().eq(ProjectVendorRel::getServiceProviderId, id));

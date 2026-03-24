@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -52,6 +53,68 @@ class AssetCenterApiSmokeTests {
         assertTrue(arrayContainsId(getDataNode(performGet("/api/v1/locations/options")), locationId));
         assertTrue(arrayContainsId(getDataNode(performGet("/api/v1/persons/options")), personId));
         assertTrue(arrayContainsId(getDataNode(performGet("/api/v1/service-providers/options")), serviceProviderId));
+    }
+
+    @Test
+    void personOptionsShouldSupportInactiveCodeValues() throws Exception {
+        String suffix = uniqueSuffix("PERSON-OPT");
+        long departmentId = createDepartment(suffix);
+        long personId = createPerson(suffix, departmentId, "INACTIVE");
+
+        JsonNode personOptions = getDataNode(performGet("/api/v1/persons/options"));
+        assertTrue(arrayContainsId(personOptions, personId));
+    }
+
+    @Test
+    void informationSystemAndServiceProviderOptionsShouldSupportInactiveCodeValues() throws Exception {
+        String suffix = uniqueSuffix("OPTION-STATUS");
+        long informationSystemId = createInformationSystem(suffix, "INACTIVE");
+        long serviceProviderId = createServiceProvider(suffix, "INACTIVE");
+
+        JsonNode informationSystemOptions = getDataNode(performGet("/api/v1/information-systems/options"));
+        JsonNode serviceProviderOptions = getDataNode(performGet("/api/v1/service-providers/options"));
+        assertTrue(arrayContainsId(informationSystemOptions, informationSystemId));
+        assertTrue(arrayContainsId(serviceProviderOptions, serviceProviderId));
+    }
+
+    @Test
+    void statusDictionaryShouldReturnAllGroups() throws Exception {
+        JsonNode dictionaries = getDataNode(performGet("/api/v1/dictionaries/statuses"));
+
+        assertEquals("正常", findDictionaryLabel(dictionaries.path("departmentStatus"), "ACTIVE"));
+        assertEquals("停用", findDictionaryLabel(dictionaries.path("personStatus"), "INACTIVE"));
+        assertEquals("规划中", findDictionaryLabel(dictionaries.path("projectStatus"), "PLANNING"));
+        assertEquals("已登记", findDictionaryLabel(dictionaries.path("hardwareStatus"), "REGISTERED"));
+        assertTrue(dictionaries.path("serviceProviderStatus").isArray());
+        assertTrue(dictionaries.path("informationSystemStatus").isArray());
+    }
+
+    @Test
+    void invalidStatusValuesShouldBeRejected() throws Exception {
+        String suffix = uniqueSuffix("INVALID");
+        long departmentId = createDepartment(suffix);
+        long locationId = createLocation(suffix);
+
+        JsonNode departmentRoot = readRoot(performPostExpectFailure("/api/v1/departments", createDepartmentPayload(suffix + "-BAD", "INVALID")));
+        assertTrue(departmentRoot.path("message").asText().contains("部门状态不合法"));
+
+        JsonNode personRoot = readRoot(performPostExpectFailure("/api/v1/persons", createPersonPayload(suffix, departmentId, "INVALID")));
+        assertTrue(personRoot.path("message").asText().contains("人员状态不合法"));
+
+        JsonNode serviceProviderRoot = readRoot(performPostExpectFailure("/api/v1/service-providers", createServiceProviderPayload(suffix, "INVALID")));
+        assertTrue(serviceProviderRoot.path("message").asText().contains("服务商状态不合法"));
+
+        JsonNode informationSystemRoot = readRoot(performPostExpectFailure("/api/v1/information-systems", createInformationSystemPayload(suffix, "INVALID")));
+        assertTrue(informationSystemRoot.path("message").asText().contains("信息系统状态不合法"));
+
+        JsonNode projectRoot = readRoot(performPostExpectFailure("/api/v1/projects", createProjectPayload(suffix, "INVALID")));
+        assertTrue(projectRoot.path("message").asText().contains("项目状态不合法"));
+
+        JsonNode hardwareRoot = readRoot(performGetExpectFailure("/api/v1/hardware-assets?pageNo=1&pageSize=10&hardwareStatus=INVALID"));
+        assertTrue(hardwareRoot.path("message").asText().contains("硬件状态不合法"));
+
+        JsonNode createdHardware = getDataNode(performPost("/api/v1/hardware-assets", createHardwareAssetPayload(suffix, departmentId, locationId)));
+        assertTrue(asLong(createdHardware.path("id")) > 0);
     }
 
     @Test
@@ -117,12 +180,84 @@ class AssetCenterApiSmokeTests {
         assertTrue(arrayContainsId(hardwareDetail.path("vendorIds"), serviceProviderId));
     }
 
+    @Test
+    void organizationRelationSyncShouldWork() throws Exception {
+        String suffix = uniqueSuffix("ORGREL");
+        long departmentId = createDepartment(suffix);
+        long locationId = createLocation(suffix);
+        long personId = createPerson(suffix, departmentId);
+        long serviceProviderId = createServiceProvider(suffix);
+        long informationSystemId = createInformationSystem(suffix);
+        long hardwareId = createHardwareAsset(suffix, departmentId, locationId);
+
+        Map<String, Object> providerRelations = new LinkedHashMap<String, Object>();
+        providerRelations.put("hardwareAssetIds", new long[]{hardwareId});
+        providerRelations.put("informationSystemIds", new long[]{informationSystemId});
+        providerRelations.put("personIds", new long[]{personId});
+        getDataNode(performPut("/api/v1/service-providers/" + serviceProviderId + "/relations", providerRelations));
+
+        JsonNode providerDetail = getDataNode(performGet("/api/v1/service-providers/" + serviceProviderId));
+        assertTrue(arrayContainsId(providerDetail.path("hardwareAssetIds"), hardwareId));
+        assertTrue(arrayContainsId(providerDetail.path("informationSystemIds"), informationSystemId));
+        assertTrue(arrayContainsId(providerDetail.path("personIds"), personId));
+
+        Map<String, Object> personRelations = new LinkedHashMap<String, Object>();
+        personRelations.put("hardwareAssetIds", new long[]{hardwareId});
+        personRelations.put("informationSystemIds", new long[]{informationSystemId});
+        getDataNode(performPut("/api/v1/persons/" + personId + "/relations", personRelations));
+
+        JsonNode personDetail = getDataNode(performGet("/api/v1/persons/" + personId));
+        assertTrue(arrayContainsId(personDetail.path("hardwareAssetIds"), hardwareId));
+        assertTrue(arrayContainsId(personDetail.path("informationSystemIds"), informationSystemId));
+    }
+
+    @Test
+    void personHardwareConflictShouldFailWithoutPartialWrite() throws Exception {
+        String suffix = uniqueSuffix("CONFLICT");
+        long departmentId = createDepartment(suffix);
+        long locationId = createLocation(suffix);
+        long ownerAId = createPerson(suffix + "-A", departmentId);
+        long ownerBId = createPerson(suffix + "-B", departmentId);
+        long hardwareId = createHardwareAsset(suffix, departmentId, locationId);
+
+        Map<String, Object> ownerARelations = new LinkedHashMap<String, Object>();
+        ownerARelations.put("hardwareAssetIds", new long[]{hardwareId});
+        ownerARelations.put("informationSystemIds", new long[0]);
+        getDataNode(performPut("/api/v1/persons/" + ownerAId + "/relations", ownerARelations));
+
+        Map<String, Object> ownerBRelations = new LinkedHashMap<String, Object>();
+        ownerBRelations.put("hardwareAssetIds", new long[]{hardwareId});
+        ownerBRelations.put("informationSystemIds", new long[0]);
+        MvcResult conflictResult = performPutExpectFailure("/api/v1/persons/" + ownerBId + "/relations", ownerBRelations);
+        JsonNode conflictRoot = readRoot(conflictResult);
+        assertTrue(conflictRoot.path("message").asText().contains("已分配其他负责人"));
+
+        JsonNode ownerADetail = getDataNode(performGet("/api/v1/persons/" + ownerAId));
+        assertTrue(arrayContainsId(ownerADetail.path("hardwareAssetIds"), hardwareId));
+
+        JsonNode ownerBDetail = getDataNode(performGet("/api/v1/persons/" + ownerBId));
+        assertEquals(0, ownerBDetail.path("hardwareAssetIds").size());
+    }
+
+    @Test
+    void deleteServiceProviderShouldFailWhenPersonRelationExists() throws Exception {
+        String suffix = uniqueSuffix("SPDEL");
+        long departmentId = createDepartment(suffix);
+        long personId = createPerson(suffix, departmentId);
+        long serviceProviderId = createServiceProvider(suffix);
+
+        Map<String, Object> providerRelations = new LinkedHashMap<String, Object>();
+        providerRelations.put("hardwareAssetIds", new long[0]);
+        providerRelations.put("informationSystemIds", new long[0]);
+        providerRelations.put("personIds", new long[]{personId});
+        getDataNode(performPut("/api/v1/service-providers/" + serviceProviderId + "/relations", providerRelations));
+
+        JsonNode deleteRoot = readRoot(performDeleteExpectFailure("/api/v1/service-providers/" + serviceProviderId));
+        assertTrue(deleteRoot.path("message").asText().contains("人员关联"));
+    }
+
     private long createDepartment(String suffix) throws Exception {
-        Map<String, Object> payload = new LinkedHashMap<String, Object>();
-        payload.put("code", "DEPT-" + suffix);
-        payload.put("name", "测试部门-" + suffix);
-        payload.put("status", "ACTIVE");
-        return asLong(getDataNode(performPost("/api/v1/departments", payload)).path("id"));
+        return asLong(getDataNode(performPost("/api/v1/departments", createDepartmentPayload(suffix, "ACTIVE"))).path("id"));
     }
 
     private long createLocation(String suffix) throws Exception {
@@ -138,46 +273,86 @@ class AssetCenterApiSmokeTests {
     }
 
     private long createPerson(String suffix, long departmentId) throws Exception {
+        return createPerson(suffix, departmentId, "ACTIVE");
+    }
+
+    private long createPerson(String suffix, long departmentId, String status) throws Exception {
+        return asLong(getDataNode(performPost("/api/v1/persons", createPersonPayload(suffix, departmentId, status))).path("id"));
+    }
+
+    private long createServiceProvider(String suffix) throws Exception {
+        return createServiceProvider(suffix, "ACTIVE");
+    }
+
+    private long createServiceProvider(String suffix, String status) throws Exception {
+        return asLong(getDataNode(performPost("/api/v1/service-providers", createServiceProviderPayload(suffix, status))).path("id"));
+    }
+
+    private long createInformationSystem(String suffix) throws Exception {
+        return createInformationSystem(suffix, "ACTIVE");
+    }
+
+    private long createInformationSystem(String suffix, String status) throws Exception {
+        return asLong(getDataNode(performPost("/api/v1/information-systems", createInformationSystemPayload(suffix, status))).path("id"));
+    }
+
+    private long createProject(String suffix) throws Exception {
+        return asLong(getDataNode(performPost("/api/v1/projects", createProjectPayload(suffix, "PLANNING"))).path("id"));
+    }
+
+    private long createHardwareAsset(String suffix, long departmentId, long locationId) throws Exception {
+        return asLong(getDataNode(performPost("/api/v1/hardware-assets", createHardwareAssetPayload(suffix, departmentId, locationId))).path("id"));
+    }
+
+    private Map<String, Object> createDepartmentPayload(String suffix, String status) {
+        Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        payload.put("code", "DEPT-" + suffix);
+        payload.put("name", "测试部门-" + suffix);
+        payload.put("status", status);
+        return payload;
+    }
+
+    private Map<String, Object> createPersonPayload(String suffix, long departmentId, String status) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("name", "测试人员-" + suffix);
         payload.put("employeeNo", "EMP-" + suffix);
         payload.put("mobile", "1380000" + String.format("%04d", SEQUENCE.getAndIncrement()));
         payload.put("departmentId", departmentId);
-        payload.put("status", "ACTIVE");
-        return asLong(getDataNode(performPost("/api/v1/persons", payload)).path("id"));
+        payload.put("status", status);
+        return payload;
     }
 
-    private long createServiceProvider(String suffix) throws Exception {
+    private Map<String, Object> createServiceProviderPayload(String suffix, String status) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("code", "SP-" + suffix);
         payload.put("name", "测试服务商-" + suffix);
         payload.put("type", "SERVICE_PROVIDER");
-        payload.put("status", "ACTIVE");
+        payload.put("status", status);
         payload.put("ratingLevel", "A");
-        return asLong(getDataNode(performPost("/api/v1/service-providers", payload)).path("id"));
+        return payload;
     }
 
-    private long createInformationSystem(String suffix) throws Exception {
+    private Map<String, Object> createInformationSystemPayload(String suffix, String status) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("code", "SYS-" + suffix);
         payload.put("name", "测试系统-" + suffix);
         payload.put("systemType", "SUPPORT_SYSTEM");
-        payload.put("status", "ACTIVE");
+        payload.put("status", status);
         payload.put("remark", "闭环联调用例");
-        return asLong(getDataNode(performPost("/api/v1/information-systems", payload)).path("id"));
+        return payload;
     }
 
-    private long createProject(String suffix) throws Exception {
+    private Map<String, Object> createProjectPayload(String suffix, String projectStatus) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("code", "PRJ-" + suffix);
         payload.put("name", "测试项目-" + suffix);
         payload.put("projectType", "NEW_BUILD");
-        payload.put("projectStatus", "PLANNING");
+        payload.put("projectStatus", projectStatus);
         payload.put("remark", "闭环联调用例");
-        return asLong(getDataNode(performPost("/api/v1/projects", payload)).path("id"));
+        return payload;
     }
 
-    private long createHardwareAsset(String suffix, long departmentId, long locationId) throws Exception {
+    private Map<String, Object> createHardwareAssetPayload(String suffix, long departmentId, long locationId) {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("assetCode", "HW-" + suffix);
         payload.put("assetName", "测试硬件-" + suffix);
@@ -194,7 +369,7 @@ class AssetCenterApiSmokeTests {
         payload.put("operatingSystem", "CentOS 7");
         payload.put("diskGb", 512);
         payload.put("virtualization", "VMware");
-        return asLong(getDataNode(performPost("/api/v1/hardware-assets", payload)).path("id"));
+        return payload;
     }
 
     private Map<String, Object> idsPayload(long id) {
@@ -219,6 +394,15 @@ class AssetCenterApiSmokeTests {
                 .andReturn();
     }
 
+    private MvcResult performPostExpectFailure(String url, Object payload) throws Exception {
+        return mockMvc.perform(post(url)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andReturn();
+    }
+
     private MvcResult performPut(String url, Object payload) throws Exception {
         return mockMvc.perform(put(url)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -227,11 +411,38 @@ class AssetCenterApiSmokeTests {
                 .andReturn();
     }
 
+    private MvcResult performPutExpectFailure(String url, Object payload) throws Exception {
+        return mockMvc.perform(put(url)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andReturn();
+    }
+
+    private MvcResult performGetExpectFailure(String url) throws Exception {
+        return mockMvc.perform(get(url))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andReturn();
+    }
+
+    private MvcResult performDeleteExpectFailure(String url) throws Exception {
+        return mockMvc.perform(delete(url))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andReturn();
+    }
+
     private JsonNode getDataNode(MvcResult result) throws Exception {
-        String content = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        JsonNode root = objectMapper.readTree(content);
+        JsonNode root = readRoot(result);
         assertTrue(root.path("success").asBoolean());
         return root.path("data");
+    }
+
+    private JsonNode readRoot(MvcResult result) throws Exception {
+        String content = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        return objectMapper.readTree(content);
     }
 
     private boolean arrayContainsId(JsonNode arrayNode, long expectedId) {
@@ -244,6 +455,18 @@ class AssetCenterApiSmokeTests {
             }
         }
         return false;
+    }
+
+    private String findDictionaryLabel(JsonNode arrayNode, String value) {
+        if (!arrayNode.isArray()) {
+            return null;
+        }
+        for (JsonNode node : arrayNode) {
+            if (value.equals(node.path("value").asText())) {
+                return node.path("label").asText();
+            }
+        }
+        return null;
     }
 
     private long asLong(JsonNode node) {

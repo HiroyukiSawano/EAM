@@ -4,6 +4,7 @@ import com.eam.assetcenter.common.api.ApiResponse;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.domain.entity.Person;
 import com.eam.assetcenter.service.PersonService;
+import com.eam.assetcenter.web.request.PersonRelationRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,16 @@ public class PersonController {
     @GetMapping("/options")
     public ApiResponse<List<Person>> options() {
         return ApiResponse.success(personService.options());
+    }
+
+    /**
+     * 同步人员的关联关系数据。
+     */
+    @Operation(summary = "同步人员关联关系")
+    @PutMapping("/{id}/relations")
+    public ApiResponse<Void> syncRelations(@PathVariable Long id, @Validated @RequestBody PersonRelationRequest request) {
+        personService.syncRelations(id, request);
+        return ApiResponse.success("Relations synchronized", null);
     }
 
     /**

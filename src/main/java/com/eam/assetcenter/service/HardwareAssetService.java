@@ -72,6 +72,7 @@ public class HardwareAssetService {
         supportService.ensureLocationExists(request.getLocationId());
         AssetHardware assetHardware = toAsset(request);
         assetHardware.setHardwareStatus(HardwareStatus.REGISTERED.name());
+        supportService.ensureHardwareStatusValid(assetHardware.getHardwareStatus());
         assetHardwareMapper.insert(assetHardware);
         upsertSubtype(assetHardware.getId(), request);
         createLifecycleRecord(assetHardware.getId(), null, HardwareStatus.REGISTERED, LifecycleActionType.REGISTER, "Initial registration", "SYSTEM");
@@ -91,6 +92,7 @@ public class HardwareAssetService {
         AssetHardware assetHardware = toAsset(request);
         assetHardware.setId(id);
         assetHardware.setHardwareStatus(existing.getHardwareStatus());
+        supportService.ensureHardwareStatusValid(assetHardware.getHardwareStatus());
         assetHardwareMapper.updateById(assetHardware);
         upsertSubtype(id, request);
         auditService.record("HARDWARE_ASSET", id, AuditActionType.UPDATE, "Updated hardware asset " + request.getAssetCode(), "SYSTEM");
@@ -137,6 +139,9 @@ public class HardwareAssetService {
      */
     public PageResponse<AssetHardware> page(int pageNo, int pageSize, String keyword, String hardwareCategory, String hardwareStatus,
                                             Long departmentId, Long locationId) {
+        if (hardwareStatus != null && !hardwareStatus.trim().isEmpty()) {
+            supportService.ensureHardwareStatusValid(hardwareStatus);
+        }
         LambdaQueryWrapper<AssetHardware> wrapper = new LambdaQueryWrapper<AssetHardware>()
                 .and(keyword != null && !keyword.trim().isEmpty(),
                         q -> q.like(AssetHardware::getAssetCode, keyword).or().like(AssetHardware::getAssetName, keyword))

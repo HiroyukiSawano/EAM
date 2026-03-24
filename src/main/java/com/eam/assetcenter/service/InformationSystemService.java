@@ -48,6 +48,7 @@ public class InformationSystemService {
     @Transactional(rollbackFor = Exception.class)
     public InformationSystem create(InformationSystem informationSystem) {
         supportService.ensureUniqueSystemCode(informationSystem.getCode(), null);
+        supportService.ensureCommonStatusValid(informationSystem.getStatus(), "信息系统");
         informationSystemMapper.insert(informationSystem);
         auditService.record("INFORMATION_SYSTEM", informationSystem.getId(), AuditActionType.CREATE,
                 "Created information system " + informationSystem.getCode(), "SYSTEM");
@@ -61,6 +62,7 @@ public class InformationSystemService {
     public InformationSystem update(Long id, InformationSystem informationSystem) {
         getById(id);
         supportService.ensureUniqueSystemCode(informationSystem.getCode(), id);
+        supportService.ensureCommonStatusValid(informationSystem.getStatus(), "信息系统");
         informationSystem.setId(id);
         informationSystemMapper.updateById(informationSystem);
         auditService.record("INFORMATION_SYSTEM", id, AuditActionType.UPDATE,
@@ -101,6 +103,9 @@ public class InformationSystemService {
      * 按条件分页查询资源列表。
      */
     public PageResponse<InformationSystem> page(int pageNo, int pageSize, String keyword, String systemType, String status) {
+        if (status != null && !status.trim().isEmpty()) {
+            supportService.ensureCommonStatusValid(status, "信息系统");
+        }
         LambdaQueryWrapper<InformationSystem> wrapper = new LambdaQueryWrapper<InformationSystem>()
                 .and(keyword != null && !keyword.trim().isEmpty(),
                         q -> q.like(InformationSystem::getCode, keyword).or().like(InformationSystem::getName, keyword))
@@ -115,7 +120,6 @@ public class InformationSystemService {
      */
     public List<InformationSystem> options() {
         return informationSystemMapper.selectList(new LambdaQueryWrapper<InformationSystem>()
-                .eq(InformationSystem::getStatus, "ACTIVE")
                 .orderByAsc(InformationSystem::getCode));
     }
 

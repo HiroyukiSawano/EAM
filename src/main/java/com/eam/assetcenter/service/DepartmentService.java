@@ -36,6 +36,7 @@ public class DepartmentService {
     @Transactional(rollbackFor = Exception.class)
     public Department create(Department department) {
         supportService.ensureUniqueDepartmentCode(department.getCode(), null);
+        supportService.ensureCommonStatusValid(department.getStatus(), "部门");
         departmentMapper.insert(department);
         auditService.record("DEPARTMENT", department.getId(), AuditActionType.CREATE, "Created department " + department.getCode(), "SYSTEM");
         return department;
@@ -48,6 +49,7 @@ public class DepartmentService {
     public Department update(Long id, Department department) {
         Department existing = getById(id);
         supportService.ensureUniqueDepartmentCode(department.getCode(), id);
+        supportService.ensureCommonStatusValid(department.getStatus(), "部门");
         department.setId(id);
         departmentMapper.updateById(department);
         auditService.record("DEPARTMENT", id, AuditActionType.UPDATE, "Updated department " + existing.getCode(), "SYSTEM");

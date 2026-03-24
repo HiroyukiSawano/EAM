@@ -4,6 +4,7 @@ import com.eam.assetcenter.common.api.ApiResponse;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.service.ServiceProviderService;
+import com.eam.assetcenter.web.request.ServiceProviderRelationRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -79,6 +80,16 @@ public class ServiceProviderController {
     @GetMapping("/options")
     public ApiResponse<List<ServiceProvider>> options() {
         return ApiResponse.success(serviceProviderService.options());
+    }
+
+    /**
+     * 同步服务商的关联关系数据。
+     */
+    @Operation(summary = "同步服务商关联关系")
+    @PutMapping("/{id}/relations")
+    public ApiResponse<Void> syncRelations(@PathVariable Long id, @Validated @RequestBody ServiceProviderRelationRequest request) {
+        serviceProviderService.syncRelations(id, request);
+        return ApiResponse.success("Relations synchronized", null);
     }
 
     /**

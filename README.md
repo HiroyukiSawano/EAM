@@ -9,6 +9,7 @@
 - 明确排除：本次不做数据资源模块
 - 技术基线：JDK 8、Spring Boot 2.7.18、MyBatis-Plus 3.5.7、Flyway
 - 当前状态：后端骨架、核心接口、Swagger 页面均已可用
+- 当前重点：全模块联调闭环、查漏补缺、稳定演示
 
 ## 业务边界规则
 
@@ -47,10 +48,12 @@
 
 - 主数据 CRUD：部门、位置、服务商、人员、项目、信息系统、硬件资产
 - 关联关系维护：项目、系统、硬件之间的多对多关系已打通
+- 下拉选项接口：位置、硬件等支撑数据已补 `options` 形式接口，供前端统一下拉使用
 - 硬件生命周期：支持注册、入库、分配、变更、闲置、维护、下线、报废
 - 审计记录：资源创建、更新、删除、关系同步、生命周期动作都会记录
 - 中文注释：主要类型、关键服务方法、请求对象、实体字段已补中文说明
 - Swagger 中文化：控制器分组、接口摘要、核心模型说明已补充
+- 冒烟测试：已补组织支撑选项、项目/软件关系闭环、硬件选项与关系闭环的后端接口测试
 
 ## 接口规则
 
@@ -74,12 +77,17 @@
 
 硬件扩展接口：
 
+- `GET /api/v1/hardware-assets/options`
 - `PUT /api/v1/hardware-assets/{id}/systems`
 - `PUT /api/v1/hardware-assets/{id}/owners`
 - `PUT /api/v1/hardware-assets/{id}/vendors`
 - `POST /api/v1/hardware-assets/{id}/lifecycle`
 - `POST /api/v1/hardware-assets/import`
 - `GET /api/v1/hardware-assets/export`
+
+组织支撑补充接口：
+
+- `GET /api/v1/locations/options`
 
 ## 开发约束规则
 
@@ -100,6 +108,7 @@
 
 - 本地默认数据源为 H2，配置见 `src/main/resources/application.yml`
 - 数据库初始化脚本由 Flyway 管理，脚本位于 `src/main/resources/db/migration/V1__init_schema.sql`
+- 后续表结构变更必须新增 `V2 / V3 / ...`，不要回改 `V1__init_schema.sql`
 - 如需切换生产数据库，按 MySQL 方向修改 `application.yml` 中的数据源配置
 - 常用验证命令：`mvn test`
 - Swagger 用于接口浏览和联调，不替代自动化测试
@@ -130,10 +139,11 @@
 
 1. 先阅读本 README，确认业务边界和技术约束
 2. 再看 `application.yml`、`V1__init_schema.sql`、`HardwareAssetService.java`
-3. 如需继续开发，优先补 DTO / VO 分层
-4. 如需继续开发，优先补 权限 / JWT
+3. 如需继续联调，优先确认项目 / 软件 / 硬件 / 组织之间的支撑关系是否闭环
+4. 如需继续开发，优先补 DTO / VO 分层
 5. 如需继续开发，优先补更完整的接口测试
 6. 如需继续开发，优先补更细的业务校验
+7. 不要把重点放回无序扩新模块，更不要引入数据资源模块
 
 ## 额外说明
 

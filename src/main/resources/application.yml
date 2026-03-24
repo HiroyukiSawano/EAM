@@ -5,12 +5,19 @@ spring:
     pathmatch:
       matching-strategy: ant_path_matcher
   datasource:
-    driver-class-name: ${DB_DRIVER:org.h2.Driver}
-    url: ${DB_URL:jdbc:h2:mem:eam;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;NON_KEYWORDS=VALUE}
-    username: ${DB_USERNAME:sa}
-    password: ${DB_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:com.mysql.cj.jdbc.Driver}
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3307/eam?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
+    # H2 本地内存库示例（如需切回，将上面的 MySQL 配置替换为以下值）
+    # driver-class-name: ${DB_DRIVER:org.h2.Driver}
+    # url: ${DB_URL:jdbc:h2:mem:eam;MODE=MYSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
+    # username: ${DB_USERNAME:sa}
+    # password: ${DB_PASSWORD:}
   flyway:
-    enabled: true
+    enabled: ${FLYWAY_ENABLED:true}
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+    baseline-version: ${FLYWAY_BASELINE_VERSION:2}
   jackson:
     default-property-inclusion: non_null
 

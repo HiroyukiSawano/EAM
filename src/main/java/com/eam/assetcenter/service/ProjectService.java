@@ -48,6 +48,7 @@ public class ProjectService {
     @Transactional(rollbackFor = Exception.class)
     public ProjectInfo create(ProjectInfo projectInfo) {
         supportService.ensureUniqueProjectCode(projectInfo.getCode(), null);
+        supportService.ensureProjectStatusValid(projectInfo.getProjectStatus());
         projectInfoMapper.insert(projectInfo);
         auditService.record("PROJECT", projectInfo.getId(), AuditActionType.CREATE, "Created project " + projectInfo.getCode(), "SYSTEM");
         return projectInfo;
@@ -60,6 +61,7 @@ public class ProjectService {
     public ProjectInfo update(Long id, ProjectInfo projectInfo) {
         getById(id);
         supportService.ensureUniqueProjectCode(projectInfo.getCode(), id);
+        supportService.ensureProjectStatusValid(projectInfo.getProjectStatus());
         projectInfo.setId(id);
         projectInfoMapper.updateById(projectInfo);
         auditService.record("PROJECT", id, AuditActionType.UPDATE, "Updated project " + projectInfo.getCode(), "SYSTEM");
@@ -102,6 +104,9 @@ public class ProjectService {
      * 按条件分页查询资源列表。
      */
     public PageResponse<ProjectInfo> page(int pageNo, int pageSize, String keyword, String projectType, String projectStatus) {
+        if (projectStatus != null && !projectStatus.trim().isEmpty()) {
+            supportService.ensureProjectStatusValid(projectStatus);
+        }
         LambdaQueryWrapper<ProjectInfo> wrapper = new LambdaQueryWrapper<ProjectInfo>()
                 .and(keyword != null && !keyword.trim().isEmpty(),
                         q -> q.like(ProjectInfo::getCode, keyword).or().like(ProjectInfo::getName, keyword))

@@ -1,6 +1,9 @@
 package com.eam.assetcenter.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.eam.assetcenter.common.enums.CommonStatus;
+import com.eam.assetcenter.common.enums.HardwareStatus;
+import com.eam.assetcenter.common.enums.ProjectStatus;
 import com.eam.assetcenter.common.exception.BusinessException;
 import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.domain.entity.AssetLocation;
@@ -137,6 +140,33 @@ public class SupportService {
      */
     public void ensureUniqueAssetCode(String code, Long excludeId) {
         ensureUnique(assetHardwareMapper.selectOne(new LambdaQueryWrapper<AssetHardware>().eq(AssetHardware::getAssetCode, code)), excludeId, "Hardware asset code already exists");
+    }
+
+    /**
+     * 校验通用状态是否合法。
+     */
+    public void ensureCommonStatusValid(String status, String resourceLabel) {
+        if (!CommonStatus.isValid(status)) {
+            throw new BusinessException(resourceLabel + "状态不合法: " + status);
+        }
+    }
+
+    /**
+     * 校验项目状态是否合法。
+     */
+    public void ensureProjectStatusValid(String status) {
+        if (!ProjectStatus.isValid(status)) {
+            throw new BusinessException("项目状态不合法: " + status);
+        }
+    }
+
+    /**
+     * 校验硬件状态是否合法。
+     */
+    public void ensureHardwareStatusValid(String status) {
+        if (!HardwareStatus.isValid(status)) {
+            throw new BusinessException("硬件状态不合法: " + status);
+        }
     }
 
     private void ensureUnique(Object entity, Long excludeId, String message) {
