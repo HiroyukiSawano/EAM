@@ -6,6 +6,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 /**
  * 全局异常处理器，统一封装接口异常响应。
@@ -25,6 +26,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.failure(exception.getBindingResult().getFieldError() == null
                 ? "Request validation failed"
                 : exception.getBindingResult().getFieldError().getDefaultMessage());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleUploadSizeException(MaxUploadSizeExceededException exception) {
+        return ApiResponse.failure("图片大小不能超过 2MB");
     }
 
     @ExceptionHandler(Exception.class)

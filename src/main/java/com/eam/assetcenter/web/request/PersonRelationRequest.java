@@ -23,4 +23,10 @@ public class PersonRelationRequest {
      */
     @Schema(description = "信息系统主键列表")
     private List<Long> informationSystemIds;
+
+    /**
+     * 项目主键列表。
+     */
+    @Schema(description = "项目主键列表")
+    private List<Long> projectIds;
 }

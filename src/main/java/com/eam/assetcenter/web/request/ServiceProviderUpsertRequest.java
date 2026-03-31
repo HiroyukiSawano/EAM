@@ -1,38 +1,30 @@
-package com.eam.assetcenter.domain.entity;
+package com.eam.assetcenter.web.request;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
+
+import javax.validation.constraints.NotBlank;
+import java.util.List;
 
 /**
- * 服务商实体。
+ * 服务商新增或更新请求对象。
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
-@TableName("service_provider")
-@Schema(description = "服务商")
-public class ServiceProvider extends BaseEntity {
-
-    /**
-     * 主键。
-     */
-    @Schema(description = "主键")
-    @TableId(type = IdType.ASSIGN_ID)
-    private Long id;
+@Schema(description = "服务商新增或更新请求")
+public class ServiceProviderUpsertRequest {
 
     /**
      * 编码。
      */
     @Schema(description = "服务商编码")
+    @NotBlank(message = "code is required")
     private String code;
 
     /**
      * 名称。
      */
     @Schema(description = "服务商名称")
+    @NotBlank(message = "name is required")
     private String name;
 
     /**
@@ -54,7 +46,7 @@ public class ServiceProvider extends BaseEntity {
     private String unifiedSocialCreditCode;
 
     /**
-     * 旧版类型字段，保留兼容。
+     * 旧版服务商类型，保留兼容。
      */
     @Schema(description = "旧版服务商类型")
     private String type;
@@ -64,6 +56,12 @@ public class ServiceProvider extends BaseEntity {
      */
     @Schema(description = "企业性质")
     private String enterpriseNature;
+
+    /**
+     * 合作范围代码列表。
+     */
+    @Schema(description = "合作范围代码列表")
+    private List<String> cooperationScopes;
 
     /**
      * 等级。
@@ -78,7 +76,7 @@ public class ServiceProvider extends BaseEntity {
     private Integer score;
 
     /**
-     * 旧版评分等级字段，保留兼容。
+     * 旧版评分等级，保留兼容。
      */
     @Schema(description = "旧版评分等级")
     private String ratingLevel;
@@ -99,6 +97,7 @@ public class ServiceProvider extends BaseEntity {
      * 状态。
      */
     @Schema(description = "状态")
+    @NotBlank(message = "status is required")
     private String status;
 
     /**
@@ -106,4 +105,22 @@ public class ServiceProvider extends BaseEntity {
      */
     @Schema(description = "备注")
     private String remark;
+
+    /**
+     * 关联人员主键列表。
+     */
+    @Schema(description = "关联人员主键列表")
+    private List<Long> personIds;
+
+    /**
+     * 关联信息系统主键列表。
+     */
+    @Schema(description = "关联信息系统主键列表")
+    private List<Long> informationSystemIds;
+
+    /**
+     * 关联硬件资产主键列表。
+     */
+    @Schema(description = "关联硬件资产主键列表")
+    private List<Long> hardwareAssetIds;
 }

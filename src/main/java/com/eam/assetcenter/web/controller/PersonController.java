@@ -2,9 +2,9 @@ package com.eam.assetcenter.web.controller;
 
 import com.eam.assetcenter.common.api.ApiResponse;
 import com.eam.assetcenter.common.api.PageResponse;
-import com.eam.assetcenter.domain.entity.Person;
 import com.eam.assetcenter.service.PersonService;
 import com.eam.assetcenter.web.request.PersonRelationRequest;
+import com.eam.assetcenter.web.request.PersonUpsertRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -38,8 +37,8 @@ public class PersonController {
      */
     @Operation(summary = "新增人员")
     @PostMapping
-    public ApiResponse<Person> create(@Validated @RequestBody Person person) {
-        return ApiResponse.success(personService.create(person));
+    public ApiResponse<Map<String, Object>> create(@Validated @RequestBody PersonUpsertRequest request) {
+        return ApiResponse.success(personService.create(request));
     }
 
     /**
@@ -47,8 +46,8 @@ public class PersonController {
      */
     @Operation(summary = "更新人员")
     @PutMapping("/{id}")
-    public ApiResponse<Person> update(@PathVariable Long id, @Validated @RequestBody Person person) {
-        return ApiResponse.success(personService.update(id, person));
+    public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @Validated @RequestBody PersonUpsertRequest request) {
+        return ApiResponse.success(personService.update(id, request));
     }
 
     /**
@@ -65,12 +64,13 @@ public class PersonController {
      */
     @Operation(summary = "分页查询人员")
     @GetMapping
-    public ApiResponse<PageResponse<Person>> page(@RequestParam(defaultValue = "1") int pageNo,
-                                                  @RequestParam(defaultValue = "10") int pageSize,
-                                                  @RequestParam(required = false) String keyword,
-                                                  @RequestParam(required = false) Long departmentId,
-                                                  @RequestParam(required = false) String status) {
-        return ApiResponse.success(personService.page(pageNo, pageSize, keyword, departmentId, status));
+    public ApiResponse<PageResponse<Map<String, Object>>> page(@RequestParam(defaultValue = "1") int pageNo,
+                                                               @RequestParam(defaultValue = "10") int pageSize,
+                                                               @RequestParam(required = false) String keyword,
+                                                               @RequestParam(required = false) Long serviceProviderId,
+                                                               @RequestParam(required = false) String personType,
+                                                               @RequestParam(required = false) String status) {
+        return ApiResponse.success(personService.page(pageNo, pageSize, keyword, serviceProviderId, personType, status));
     }
 
     /**
@@ -78,8 +78,17 @@ public class PersonController {
      */
     @Operation(summary = "查询人员下拉选项")
     @GetMapping("/options")
-    public ApiResponse<List<Person>> options() {
+    public ApiResponse<java.util.List<com.eam.assetcenter.domain.entity.Person>> options() {
         return ApiResponse.success(personService.options());
+    }
+
+    /**
+     * 查询人员统计。
+     */
+    @Operation(summary = "查询人员统计")
+    @GetMapping("/stats")
+    public ApiResponse<Map<String, Object>> stats() {
+        return ApiResponse.success(personService.stats());
     }
 
     /**

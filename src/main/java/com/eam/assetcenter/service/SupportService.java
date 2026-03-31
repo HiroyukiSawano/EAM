@@ -2,8 +2,12 @@ package com.eam.assetcenter.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.eam.assetcenter.common.enums.CommonStatus;
+import com.eam.assetcenter.common.enums.CooperationScope;
+import com.eam.assetcenter.common.enums.EnterpriseNature;
 import com.eam.assetcenter.common.enums.HardwareStatus;
+import com.eam.assetcenter.common.enums.PersonType;
 import com.eam.assetcenter.common.enums.ProjectStatus;
+import com.eam.assetcenter.common.enums.VendorLevel;
 import com.eam.assetcenter.common.exception.BusinessException;
 import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.domain.entity.AssetLocation;
@@ -148,6 +152,56 @@ public class SupportService {
     public void ensureCommonStatusValid(String status, String resourceLabel) {
         if (!CommonStatus.isValid(status)) {
             throw new BusinessException(resourceLabel + "状态不合法: " + status);
+        }
+    }
+
+    /**
+     * 校验人员类型是否合法。
+     */
+    public void ensurePersonTypeValid(String personType) {
+        if (personType != null && !personType.trim().isEmpty() && !PersonType.isValid(personType)) {
+            throw new BusinessException("人员类型不合法: " + personType);
+        }
+    }
+
+    /**
+     * 校验服务商企业性质是否合法。
+     */
+    public void ensureEnterpriseNatureValid(String enterpriseNature) {
+        if (enterpriseNature != null && !enterpriseNature.trim().isEmpty() && !EnterpriseNature.isValid(enterpriseNature)) {
+            throw new BusinessException("服务商性质不合法: " + enterpriseNature);
+        }
+    }
+
+    /**
+     * 校验服务商等级是否合法。
+     */
+    public void ensureVendorLevelValid(String vendorLevel) {
+        if (vendorLevel != null && !vendorLevel.trim().isEmpty() && !VendorLevel.isValid(vendorLevel)) {
+            throw new BusinessException("服务商等级不合法: " + vendorLevel);
+        }
+    }
+
+    /**
+     * 校验服务商合作范围是否合法。
+     */
+    public void ensureCooperationScopesValid(Iterable<String> cooperationScopes) {
+        if (cooperationScopes == null) {
+            return;
+        }
+        for (String cooperationScope : cooperationScopes) {
+            if (!CooperationScope.isValid(cooperationScope)) {
+                throw new BusinessException("服务商合作范围不合法: " + cooperationScope);
+            }
+        }
+    }
+
+    /**
+     * 校验服务商评分是否合法。
+     */
+    public void ensureScoreValid(Integer score) {
+        if (score != null && (score.intValue() < 1 || score.intValue() > 5)) {
+            throw new BusinessException("服务商评分不合法: " + score);
         }
     }
 

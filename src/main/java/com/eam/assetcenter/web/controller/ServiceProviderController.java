@@ -2,9 +2,9 @@ package com.eam.assetcenter.web.controller;
 
 import com.eam.assetcenter.common.api.ApiResponse;
 import com.eam.assetcenter.common.api.PageResponse;
-import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.service.ServiceProviderService;
 import com.eam.assetcenter.web.request.ServiceProviderRelationRequest;
+import com.eam.assetcenter.web.request.ServiceProviderUpsertRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -38,8 +37,8 @@ public class ServiceProviderController {
      */
     @Operation(summary = "新增服务商")
     @PostMapping
-    public ApiResponse<ServiceProvider> create(@Validated @RequestBody ServiceProvider serviceProvider) {
-        return ApiResponse.success(serviceProviderService.create(serviceProvider));
+    public ApiResponse<Map<String, Object>> create(@Validated @RequestBody ServiceProviderUpsertRequest request) {
+        return ApiResponse.success(serviceProviderService.create(request));
     }
 
     /**
@@ -47,8 +46,8 @@ public class ServiceProviderController {
      */
     @Operation(summary = "更新服务商")
     @PutMapping("/{id}")
-    public ApiResponse<ServiceProvider> update(@PathVariable Long id, @Validated @RequestBody ServiceProvider serviceProvider) {
-        return ApiResponse.success(serviceProviderService.update(id, serviceProvider));
+    public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @Validated @RequestBody ServiceProviderUpsertRequest request) {
+        return ApiResponse.success(serviceProviderService.update(id, request));
     }
 
     /**
@@ -65,12 +64,12 @@ public class ServiceProviderController {
      */
     @Operation(summary = "分页查询服务商")
     @GetMapping
-    public ApiResponse<PageResponse<ServiceProvider>> page(@RequestParam(defaultValue = "1") int pageNo,
-                                                           @RequestParam(defaultValue = "10") int pageSize,
-                                                           @RequestParam(required = false) String keyword,
-                                                           @RequestParam(required = false) String type,
-                                                           @RequestParam(required = false) String status) {
-        return ApiResponse.success(serviceProviderService.page(pageNo, pageSize, keyword, type, status));
+    public ApiResponse<PageResponse<Map<String, Object>>> page(@RequestParam(defaultValue = "1") int pageNo,
+                                                               @RequestParam(defaultValue = "10") int pageSize,
+                                                               @RequestParam(required = false) String keyword,
+                                                               @RequestParam(required = false) String cooperationScope,
+                                                               @RequestParam(required = false) String status) {
+        return ApiResponse.success(serviceProviderService.page(pageNo, pageSize, keyword, cooperationScope, status));
     }
 
     /**
@@ -78,8 +77,17 @@ public class ServiceProviderController {
      */
     @Operation(summary = "查询服务商下拉选项")
     @GetMapping("/options")
-    public ApiResponse<List<ServiceProvider>> options() {
+    public ApiResponse<java.util.List<Map<String, Object>>> options() {
         return ApiResponse.success(serviceProviderService.options());
+    }
+
+    /**
+     * 查询服务商统计。
+     */
+    @Operation(summary = "查询服务商统计")
+    @GetMapping("/stats")
+    public ApiResponse<Map<String, Object>> stats() {
+        return ApiResponse.success(serviceProviderService.stats());
     }
 
     /**

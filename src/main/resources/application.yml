@@ -1,6 +1,10 @@
 spring:
   application:
     name: asset-center
+  servlet:
+    multipart:
+      max-file-size: ${FILE_STORAGE_MAX_FILE_SIZE:2MB}
+      max-request-size: ${FILE_STORAGE_MAX_REQUEST_SIZE:2MB}
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
@@ -32,6 +36,12 @@ mybatis-plus:
 
 server:
   port: ${SERVER_PORT:8080}
+
+asset-center:
+  file-storage:
+    base-dir: ${FILE_STORAGE_BASE_DIR:${user.dir}/data/uploads/images}
+    public-base-path: ${FILE_STORAGE_PUBLIC_BASE_PATH:/api/v1/files/images}
+    max-image-size-bytes: ${FILE_STORAGE_MAX_IMAGE_SIZE_BYTES:2097152}
 
 springdoc:
   swagger-ui:

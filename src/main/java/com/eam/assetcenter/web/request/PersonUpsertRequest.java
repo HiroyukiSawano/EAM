@@ -1,32 +1,22 @@
-package com.eam.assetcenter.domain.entity;
+package com.eam.assetcenter.web.request;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
+
+import javax.validation.constraints.NotBlank;
 
 /**
- * 人员实体。
+ * 人员新增或更新请求对象。
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
-@TableName("person")
-@Schema(description = "人员")
-public class Person extends BaseEntity {
+@Schema(description = "人员新增或更新请求")
+public class PersonUpsertRequest {
 
     /**
-     * 主键。
-     */
-    @Schema(description = "主键")
-    @TableId(type = IdType.ASSIGN_ID)
-    private Long id;
-
-    /**
-     * 名称。
+     * 姓名。
      */
     @Schema(description = "姓名")
+    @NotBlank(message = "name is required")
     private String name;
 
     /**
@@ -87,5 +77,6 @@ public class Person extends BaseEntity {
      * 状态。
      */
     @Schema(description = "状态")
+    @NotBlank(message = "status is required")
     private String status;
 }
