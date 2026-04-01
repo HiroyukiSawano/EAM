@@ -5,7 +5,9 @@ import com.eam.assetcenter.common.enums.CommonStatus;
 import com.eam.assetcenter.common.enums.CooperationScope;
 import com.eam.assetcenter.common.enums.EnterpriseNature;
 import com.eam.assetcenter.common.enums.HardwareStatus;
+import com.eam.assetcenter.common.enums.PaymentStatus;
 import com.eam.assetcenter.common.enums.PersonType;
+import com.eam.assetcenter.common.enums.ProjectType;
 import com.eam.assetcenter.common.enums.ProjectStatus;
 import com.eam.assetcenter.common.enums.VendorLevel;
 import com.eam.assetcenter.common.exception.BusinessException;
@@ -211,6 +213,24 @@ public class SupportService {
     public void ensureProjectStatusValid(String status) {
         if (!ProjectStatus.isValid(status)) {
             throw new BusinessException("项目状态不合法: " + status);
+        }
+    }
+
+    /**
+     * 校验项目类型是否合法。
+     */
+    public void ensureProjectTypeValid(String projectType) {
+        if (projectType != null && !projectType.trim().isEmpty() && !ProjectType.isValid(projectType)) {
+            throw new BusinessException("项目类型不合法: " + projectType);
+        }
+    }
+
+    /**
+     * 校验付款状态是否合法。
+     */
+    public void ensurePaymentStatusValid(String paymentStatus) {
+        if (paymentStatus != null && !paymentStatus.trim().isEmpty() && !PaymentStatus.isValid(paymentStatus)) {
+            throw new BusinessException("项目付款状态不合法: " + paymentStatus);
         }
     }
 

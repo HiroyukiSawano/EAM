@@ -1,160 +1,99 @@
-package com.eam.assetcenter.domain.entity;
+package com.eam.assetcenter.web.request;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 
+import javax.validation.constraints.NotBlank;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
- * 项目实体。
+ * 项目新增或更新请求对象。
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
-@TableName("project_info")
-@Schema(description = "项目")
-public class ProjectInfo extends BaseEntity {
+@Schema(description = "项目新增或更新请求")
+public class ProjectUpsertRequest {
 
-    /**
-     * 主键。
-     */
-    @Schema(description = "主键")
-    @TableId(type = IdType.ASSIGN_ID)
-    private Long id;
-
-    /**
-     * 编码。
-     */
     @Schema(description = "项目编码")
+    @NotBlank(message = "code is required")
     private String code;
 
-    /**
-     * 名称。
-     */
     @Schema(description = "项目名称")
+    @NotBlank(message = "name is required")
     private String name;
 
-    /**
-     * 项目类型。
-     */
     @Schema(description = "项目类型")
+    @NotBlank(message = "projectType is required")
     private String projectType;
 
-    /**
-     * 项目状态。
-     */
     @Schema(description = "项目状态")
+    @NotBlank(message = "projectStatus is required")
     private String projectStatus;
 
-    /**
-     * 立项批号。
-     */
     @Schema(description = "立项批号")
     private String approvalBatchNo;
 
-    /**
-     * 项目预算（万元）。
-     */
     @Schema(description = "项目预算（万元）")
     private BigDecimal projectBudget;
 
-    /**
-     * 项目合同金额（万元）。
-     */
     @Schema(description = "项目合同金额（万元）")
     private BigDecimal contractAmount;
 
-    /**
-     * 项目负责人姓名。
-     */
     @Schema(description = "项目负责人姓名")
     private String ownerName;
 
-    /**
-     * 项目负责人联系电话。
-     */
     @Schema(description = "项目负责人联系电话")
     private String ownerPhone;
 
-    /**
-     * 立项时间。
-     */
     @Schema(description = "立项时间")
     private LocalDate approvalDate;
 
-    /**
-     * 开始日期。
-     */
-    @Schema(description = "开始日期")
+    @Schema(description = "开工时间")
     private LocalDate startDate;
 
-    /**
-     * 初验时间。
-     */
     @Schema(description = "初验时间")
     private LocalDate initialDeliveryDate;
 
-    /**
-     * 结束日期。
-     */
-    @Schema(description = "结束日期")
+    @Schema(description = "终验时间")
     private LocalDate endDate;
 
-    /**
-     * 质保截止时间。
-     */
     @Schema(description = "质保截止时间")
     private LocalDate warrantyEndDate;
 
-    /**
-     * 当前阶段。
-     */
     @Schema(description = "当前阶段")
     private String stage;
 
-    /**
-     * 支付周期名称。
-     */
-    @Schema(description = "支付周期名称")
+    @Schema(description = "周期名称")
     private String paymentCycleName;
 
-    /**
-     * 付款比例。
-     */
     @Schema(description = "付款比例")
     private BigDecimal paymentRatio;
 
-    /**
-     * 付款金额。
-     */
     @Schema(description = "付款金额")
     private BigDecimal paymentAmount;
 
-    /**
-     * 计划付款时间。
-     */
     @Schema(description = "计划付款时间")
     private LocalDate plannedPaymentDate;
 
-    /**
-     * 实际付款时间。
-     */
     @Schema(description = "实际付款时间")
     private LocalDate actualPaymentDate;
 
-    /**
-     * 付款状态。
-     */
     @Schema(description = "付款状态")
     private String paymentStatus;
 
-    /**
-     * 备注。
-     */
     @Schema(description = "备注")
     private String remark;
+
+    @Schema(description = "项目文档列表")
+    private List<ProjectDocumentRequest> documents;
+
+    @Schema(description = "关联人员主键列表")
+    private List<Long> personIds;
+
+    @Schema(description = "关联信息系统主键列表")
+    private List<Long> informationSystemIds;
+
+    @Schema(description = "关联硬件资产主键列表")
+    private List<Long> hardwareAssetIds;
 }

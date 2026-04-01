@@ -2,9 +2,9 @@ package com.eam.assetcenter.web.controller;
 
 import com.eam.assetcenter.common.api.ApiResponse;
 import com.eam.assetcenter.common.api.PageResponse;
-import com.eam.assetcenter.domain.entity.ProjectInfo;
 import com.eam.assetcenter.service.ProjectService;
 import com.eam.assetcenter.web.request.ProjectRelationRequest;
+import com.eam.assetcenter.web.request.ProjectUpsertRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -38,8 +37,8 @@ public class ProjectController {
      */
     @Operation(summary = "新增项目")
     @PostMapping
-    public ApiResponse<ProjectInfo> create(@Validated @RequestBody ProjectInfo projectInfo) {
-        return ApiResponse.success(projectService.create(projectInfo));
+    public ApiResponse<Map<String, Object>> create(@Validated @RequestBody ProjectUpsertRequest request) {
+        return ApiResponse.success(projectService.create(request));
     }
 
     /**
@@ -47,8 +46,8 @@ public class ProjectController {
      */
     @Operation(summary = "更新项目")
     @PutMapping("/{id}")
-    public ApiResponse<ProjectInfo> update(@PathVariable Long id, @Validated @RequestBody ProjectInfo projectInfo) {
-        return ApiResponse.success(projectService.update(id, projectInfo));
+    public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @Validated @RequestBody ProjectUpsertRequest request) {
+        return ApiResponse.success(projectService.update(id, request));
     }
 
     /**
@@ -65,11 +64,11 @@ public class ProjectController {
      */
     @Operation(summary = "分页查询项目")
     @GetMapping
-    public ApiResponse<PageResponse<ProjectInfo>> page(@RequestParam(defaultValue = "1") int pageNo,
-                                                       @RequestParam(defaultValue = "10") int pageSize,
-                                                       @RequestParam(required = false) String keyword,
-                                                       @RequestParam(required = false) String projectType,
-                                                       @RequestParam(required = false) String projectStatus) {
+    public ApiResponse<PageResponse<Map<String, Object>>> page(@RequestParam(defaultValue = "1") int pageNo,
+                                                               @RequestParam(defaultValue = "10") int pageSize,
+                                                               @RequestParam(required = false) String keyword,
+                                                               @RequestParam(required = false) String projectType,
+                                                               @RequestParam(required = false) String projectStatus) {
         return ApiResponse.success(projectService.page(pageNo, pageSize, keyword, projectType, projectStatus));
     }
 
@@ -78,8 +77,17 @@ public class ProjectController {
      */
     @Operation(summary = "查询项目下拉选项")
     @GetMapping("/options")
-    public ApiResponse<List<ProjectInfo>> options() {
+    public ApiResponse<java.util.List<com.eam.assetcenter.domain.entity.ProjectInfo>> options() {
         return ApiResponse.success(projectService.options());
+    }
+
+    /**
+     * 查询项目统计。
+     */
+    @Operation(summary = "查询项目统计")
+    @GetMapping("/stats")
+    public ApiResponse<Map<String, Object>> stats() {
+        return ApiResponse.success(projectService.stats());
     }
 
     /**

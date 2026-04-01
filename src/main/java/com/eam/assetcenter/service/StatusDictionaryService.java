@@ -2,6 +2,7 @@ package com.eam.assetcenter.service;
 
 import com.eam.assetcenter.common.enums.CommonStatus;
 import com.eam.assetcenter.common.enums.HardwareStatus;
+import com.eam.assetcenter.common.enums.PaymentStatus;
 import com.eam.assetcenter.common.enums.ProjectStatus;
 import com.eam.assetcenter.common.enums.StatusDictionaryEnum;
 import com.eam.assetcenter.common.model.StatusDictionaryItem;
@@ -30,6 +31,7 @@ public class StatusDictionaryService {
         result.put("serviceProviderStatus", commonStatuses);
         result.put("informationSystemStatus", commonStatuses);
         result.put("projectStatus", toDictionaryItems(ProjectStatus.values()));
+        result.put("paymentStatus", toDictionaryItems(PaymentStatus.values()));
         result.put("hardwareStatus", toDictionaryItems(HardwareStatus.values()));
         return result;
     }

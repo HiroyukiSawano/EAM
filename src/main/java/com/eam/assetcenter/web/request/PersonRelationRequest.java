@@ -29,4 +29,10 @@ public class PersonRelationRequest {
      */
     @Schema(description = "项目主键列表")
     private List<Long> projectIds;
+
+    /**
+     * 关联服务商主键列表。
+     */
+    @Schema(description = "关联服务商主键列表")
+    private List<Long> relatedServiceProviderIds;
 }

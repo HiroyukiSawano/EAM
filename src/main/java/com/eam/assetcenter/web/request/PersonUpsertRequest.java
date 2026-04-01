@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import javax.validation.constraints.NotBlank;
+import java.util.List;
 
 /**
  * 人员新增或更新请求对象。
@@ -77,6 +78,29 @@ public class PersonUpsertRequest {
      * 状态。
      */
     @Schema(description = "状态")
-    @NotBlank(message = "status is required")
     private String status;
+
+    /**
+     * 是否开通运营账号。
+     */
+    @Schema(description = "是否开通运营账号")
+    private Boolean hasOpsAccount;
+
+    /**
+     * 关联信息系统主键列表。
+     */
+    @Schema(description = "关联信息系统主键列表")
+    private List<Long> informationSystemIds;
+
+    /**
+     * 关联硬件资产主键列表。
+     */
+    @Schema(description = "关联硬件资产主键列表")
+    private List<Long> hardwareAssetIds;
+
+    /**
+     * 关联服务商主键列表。
+     */
+    @Schema(description = "关联服务商主键列表")
+    private List<Long> relatedServiceProviderIds;
 }

@@ -84,6 +84,12 @@ public class Person extends BaseEntity {
     private String personType;
 
     /**
+     * 是否开通运营账号。
+     */
+    @Schema(description = "是否开通运营账号")
+    private Boolean hasOpsAccount;
+
+    /**
      * 状态。
      */
     @Schema(description = "状态")

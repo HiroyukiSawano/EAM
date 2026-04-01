@@ -1,7 +1,7 @@
 package com.eam.assetcenter.web.controller;
 
 import com.eam.assetcenter.common.api.ApiResponse;
-import com.eam.assetcenter.service.ImageFileService;
+import com.eam.assetcenter.service.FileStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +27,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class FileController {
 
-    private final ImageFileService imageFileService;
+    private final FileStorageService fileStorageService;
 
     /**
      * 上传图片并返回访问地址。
@@ -35,7 +35,7 @@ public class FileController {
     @Operation(summary = "上传图片")
     @PostMapping(value = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<Map<String, Object>> uploadImage(@RequestPart("file") MultipartFile file) {
-        return ApiResponse.success(imageFileService.uploadImage(file));
+        return ApiResponse.success(fileStorageService.uploadImage(file));
     }
 
     /**
@@ -44,9 +44,30 @@ public class FileController {
     @Operation(summary = "读取图片")
     @GetMapping("/images/{fileName:.+}")
     public ResponseEntity<Resource> getImage(@PathVariable String fileName) {
-        Resource resource = imageFileService.loadImage(fileName);
+        Resource resource = fileStorageService.loadImage(fileName);
         return ResponseEntity.ok()
-                .contentType(imageFileService.resolveMediaType(fileName))
+                .contentType(fileStorageService.resolveMediaType(fileName))
+                .body(resource);
+    }
+
+    /**
+     * 上传项目文档等通用文件。
+     */
+    @Operation(summary = "上传通用文件")
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<Map<String, Object>> uploadFile(@RequestPart("file") MultipartFile file) {
+        return ApiResponse.success(fileStorageService.uploadDocument(file));
+    }
+
+    /**
+     * 读取指定通用文件。
+     */
+    @Operation(summary = "读取通用文件")
+    @GetMapping("/documents/{fileName:.+}")
+    public ResponseEntity<Resource> getDocument(@PathVariable String fileName) {
+        Resource resource = fileStorageService.loadDocument(fileName);
+        return ResponseEntity.ok()
+                .contentType(fileStorageService.resolveMediaType(fileName))
                 .body(resource);
     }
 }

@@ -1,21 +1,18 @@
 package com.eam.assetcenter.common.enums;
 
 /**
- * 项目状态枚举。
+ * 项目付款状态枚举。
  */
-public enum ProjectStatus implements StatusDictionaryEnum {
-    PLANNING("规划中", "Planning", "info"),
-    CONSTRUCTION("建设期", "Construction", "warning"),
-    DELAYED("延期", "Delayed", "warning"),
-    OPERATING("运行中", "Operating", "success"),
-    TERMINATED("终止", "Terminated", "danger"),
-    COMPLETED("已结束", "Completed", "info");
+public enum PaymentStatus implements StatusDictionaryEnum {
+    PENDING("待支付", "Pending", "info"),
+    PARTIAL("部分支付", "Partial", "warning"),
+    PAID("已付款", "Paid", "success");
 
     private final String label;
     private final String labelEn;
     private final String tagType;
 
-    ProjectStatus(String label, String labelEn, String tagType) {
+    PaymentStatus(String label, String labelEn, String tagType) {
         this.label = label;
         this.labelEn = labelEn;
         this.tagType = tagType;
@@ -42,13 +39,13 @@ public enum ProjectStatus implements StatusDictionaryEnum {
     }
 
     /**
-     * 判断状态值是否有效。
+     * 判断付款状态是否合法。
      */
     public static boolean isValid(String value) {
         if (value == null || value.trim().isEmpty()) {
             return false;
         }
-        for (ProjectStatus item : values()) {
+        for (PaymentStatus item : values()) {
             if (item.name().equals(value)) {
                 return true;
             }
@@ -56,8 +53,3 @@ public enum ProjectStatus implements StatusDictionaryEnum {
         return false;
     }
 }
-
-
-
-
-

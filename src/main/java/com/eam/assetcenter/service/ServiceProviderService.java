@@ -13,12 +13,14 @@ import com.eam.assetcenter.domain.entity.Person;
 import com.eam.assetcenter.domain.entity.ProjectVendorRel;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.domain.entity.ServiceProviderCooperationScopeRel;
+import com.eam.assetcenter.domain.entity.ServiceProviderPersonRel;
 import com.eam.assetcenter.domain.entity.SystemVendorRel;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderCooperationScopeRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
+import com.eam.assetcenter.infrastructure.mapper.ServiceProviderPersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
 import com.eam.assetcenter.web.request.ServiceProviderRelationRequest;
 import com.eam.assetcenter.web.request.ServiceProviderUpsertRequest;
@@ -43,6 +45,7 @@ public class ServiceProviderService {
 
     private final ServiceProviderMapper serviceProviderMapper;
     private final ServiceProviderCooperationScopeRelMapper cooperationScopeRelMapper;
+    private final ServiceProviderPersonRelMapper serviceProviderPersonRelMapper;
     private final AssetHardwareVendorRelMapper hardwareVendorRelMapper;
     private final SystemVendorRelMapper systemVendorRelMapper;
     private final ProjectVendorRelMapper projectVendorRelMapper;
@@ -225,6 +228,11 @@ public class ServiceProviderService {
                 Wrappers.<Person>lambdaQuery().eq(Person::getServiceProviderId, id));
         if (personCount > 0) {
             throw new BusinessException("该服务商仍被 " + personCount + " 名人员关联，无法删除");
+        }
+        Long relatedPersonCount = serviceProviderPersonRelMapper.selectCount(
+                Wrappers.<ServiceProviderPersonRel>lambdaQuery().eq(ServiceProviderPersonRel::getServiceProviderId, id));
+        if (relatedPersonCount > 0) {
+            throw new BusinessException("该服务商仍被 " + relatedPersonCount + " 条人员关联服务商记录引用，无法删除");
         }
         Long projectCount = projectVendorRelMapper.selectCount(
                 Wrappers.<ProjectVendorRel>lambdaQuery().eq(ProjectVendorRel::getServiceProviderId, id));

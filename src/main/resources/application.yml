@@ -3,8 +3,8 @@ spring:
     name: asset-center
   servlet:
     multipart:
-      max-file-size: ${FILE_STORAGE_MAX_FILE_SIZE:2MB}
-      max-request-size: ${FILE_STORAGE_MAX_REQUEST_SIZE:2MB}
+      max-file-size: ${FILE_STORAGE_MAX_FILE_SIZE:100MB}
+      max-request-size: ${FILE_STORAGE_MAX_REQUEST_SIZE:100MB}
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
@@ -39,9 +39,11 @@ server:
 
 asset-center:
   file-storage:
-    base-dir: ${FILE_STORAGE_BASE_DIR:${user.dir}/data/uploads/images}
-    public-base-path: ${FILE_STORAGE_PUBLIC_BASE_PATH:/api/v1/files/images}
+    base-dir: ${FILE_STORAGE_BASE_DIR:${user.dir}/data/uploads}
+    image-public-base-path: ${FILE_STORAGE_IMAGE_PUBLIC_BASE_PATH:${FILE_STORAGE_PUBLIC_BASE_PATH:/api/v1/files/images}}
+    document-public-base-path: ${FILE_STORAGE_DOCUMENT_PUBLIC_BASE_PATH:/api/v1/files/documents}
     max-image-size-bytes: ${FILE_STORAGE_MAX_IMAGE_SIZE_BYTES:2097152}
+    max-document-size-bytes: ${FILE_STORAGE_MAX_DOCUMENT_SIZE_BYTES:104857600}
 
 springdoc:
   swagger-ui:
