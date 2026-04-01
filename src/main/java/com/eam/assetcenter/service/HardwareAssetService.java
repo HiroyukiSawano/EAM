@@ -1,12 +1,11 @@
 package com.eam.assetcenter.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.common.enums.AuditActionType;
-import com.eam.assetcenter.common.enums.HardwareCategory;
 import com.eam.assetcenter.common.enums.HardwareStatus;
-import com.eam.assetcenter.common.enums.LifecycleActionType;
 import com.eam.assetcenter.common.enums.PersonRelationType;
 import com.eam.assetcenter.common.exception.BusinessException;
 import com.eam.assetcenter.domain.entity.AssetHardware;
@@ -18,6 +17,12 @@ import com.eam.assetcenter.domain.entity.AssetHardwareSystemRel;
 import com.eam.assetcenter.domain.entity.AssetHardwareTicketTerminal;
 import com.eam.assetcenter.domain.entity.AssetHardwareVendorRel;
 import com.eam.assetcenter.domain.entity.AssetLifecycleRecord;
+import com.eam.assetcenter.domain.entity.InformationSystem;
+import com.eam.assetcenter.domain.entity.Person;
+import com.eam.assetcenter.domain.entity.ProjectHardwareRel;
+import com.eam.assetcenter.domain.entity.ProjectInfo;
+import com.eam.assetcenter.domain.entity.ServiceProvider;
+import com.eam.assetcenter.domain.entity.SystemVendorRel;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwarePersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareQueryTerminalMapper;
@@ -27,24 +32,30 @@ import com.eam.assetcenter.infrastructure.mapper.AssetHardwareSystemRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareTicketTerminalMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetLifecycleRecordMapper;
+import com.eam.assetcenter.infrastructure.mapper.InformationSystemMapper;
+import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
+import com.eam.assetcenter.infrastructure.mapper.ProjectHardwareRelMapper;
+import com.eam.assetcenter.infrastructure.mapper.ProjectInfoMapper;
+import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
+import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
+import com.eam.assetcenter.web.request.HardwareAssetRelationRequest;
 import com.eam.assetcenter.web.request.HardwareAssetUpsertRequest;
 import com.eam.assetcenter.web.request.HardwareBatchImportRequest;
 import com.eam.assetcenter.web.request.HardwareLifecycleRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 硬件资产业务服务，负责台账、关联关系和生命周期管理。
+ * 硬件资产业务服务，负责新版硬件台账、统计与关联关系维护。
  */
 @Service
 @RequiredArgsConstructor
@@ -59,49 +70,39 @@ public class HardwareAssetService {
     private final AssetHardwarePersonRelMapper hardwarePersonRelMapper;
     private final AssetHardwareVendorRelMapper hardwareVendorRelMapper;
     private final AssetLifecycleRecordMapper assetLifecycleRecordMapper;
+    private final InformationSystemMapper informationSystemMapper;
+    private final SystemVendorRelMapper systemVendorRelMapper;
+    private final PersonMapper personMapper;
+    private final ProjectInfoMapper projectInfoMapper;
+    private final ProjectHardwareRelMapper projectHardwareRelMapper;
+    private final ServiceProviderMapper serviceProviderMapper;
     private final SupportService supportService;
     private final AuditService auditService;
 
-    /**
-     * 新增资源记录。
-     */
     @Transactional(rollbackFor = Exception.class)
-    public AssetHardware create(HardwareAssetUpsertRequest request) {
-        supportService.ensureUniqueAssetCode(request.getAssetCode(), null);
-        supportService.ensureDepartmentExists(request.getDepartmentId());
-        supportService.ensureLocationExists(request.getLocationId());
-        AssetHardware assetHardware = toAsset(request);
-        assetHardware.setHardwareStatus(HardwareStatus.REGISTERED.name());
-        supportService.ensureHardwareStatusValid(assetHardware.getHardwareStatus());
+    public Map<String, Object> create(HardwareAssetUpsertRequest request) {
+        validateRequest(request, null);
+        AssetHardware assetHardware = toEntity(request, null);
         assetHardwareMapper.insert(assetHardware);
-        upsertSubtype(assetHardware.getId(), request);
-        createLifecycleRecord(assetHardware.getId(), null, HardwareStatus.REGISTERED, LifecycleActionType.REGISTER, "Initial registration", "SYSTEM");
-        auditService.record("HARDWARE_ASSET", assetHardware.getId(), AuditActionType.CREATE, "Created hardware asset " + assetHardware.getAssetCode(), "SYSTEM");
-        return assetHardware;
+        syncOwnerRelation(assetHardware, request.getOwnerPersonId(), request.getContactPhone(), true);
+        auditService.record("HARDWARE_ASSET", assetHardware.getId(), AuditActionType.CREATE,
+                "Created hardware asset " + assetHardware.getAssetCode(), "SYSTEM");
+        return toHardwareView(assetHardwareMapper.selectById(assetHardware.getId()));
     }
 
-    /**
-     * 更新指定主键对应的资源记录。
-     */
     @Transactional(rollbackFor = Exception.class)
-    public AssetHardware update(Long id, HardwareAssetUpsertRequest request) {
+    public Map<String, Object> update(Long id, HardwareAssetUpsertRequest request) {
         AssetHardware existing = getById(id);
-        supportService.ensureUniqueAssetCode(request.getAssetCode(), id);
-        supportService.ensureDepartmentExists(request.getDepartmentId());
-        supportService.ensureLocationExists(request.getLocationId());
-        AssetHardware assetHardware = toAsset(request);
+        validateRequest(request, id);
+        AssetHardware assetHardware = toEntity(request, existing);
         assetHardware.setId(id);
-        assetHardware.setHardwareStatus(existing.getHardwareStatus());
-        supportService.ensureHardwareStatusValid(assetHardware.getHardwareStatus());
         assetHardwareMapper.updateById(assetHardware);
-        upsertSubtype(id, request);
-        auditService.record("HARDWARE_ASSET", id, AuditActionType.UPDATE, "Updated hardware asset " + request.getAssetCode(), "SYSTEM");
-        return getById(id);
+        syncOwnerRelation(assetHardwareMapper.selectById(id), request.getOwnerPersonId(), request.getContactPhone(), true);
+        auditService.record("HARDWARE_ASSET", id, AuditActionType.UPDATE,
+                "Updated hardware asset " + assetHardware.getAssetCode(), "SYSTEM");
+        return toHardwareView(assetHardwareMapper.selectById(id));
     }
 
-    /**
-     * 根据主键查询资源记录，不存在时抛出业务异常。
-     */
     public AssetHardware getById(Long id) {
         AssetHardware assetHardware = assetHardwareMapper.selectById(id);
         if (assetHardware == null) {
@@ -110,322 +111,495 @@ public class HardwareAssetService {
         return assetHardware;
     }
 
-    /**
-     * 查询资源详情，并聚合相关联的数据。
-     */
+    public Map<String, Object> stats() {
+        Map<String, Object> result = new LinkedHashMap<String, Object>();
+        result.put("total", assetHardwareMapper.selectCount(Wrappers.<AssetHardware>lambdaQuery()));
+        result.put("server", countByHardwareType("SERVER"));
+        result.put("networkDevice", countByHardwareType("NETWORK_DEVICE"));
+        result.put("terminalDevice", countByHardwareType("TERMINAL_DEVICE"));
+        result.put("peripheral", countByHardwareType("PERIPHERAL"));
+        return result;
+    }
+
     public Map<String, Object> getDetail(Long id) {
         AssetHardware assetHardware = getById(id);
-        Map<String, Object> detail = new HashMap<String, Object>();
-        detail.put("hardwareAsset", assetHardware);
-        detail.put("subtypeDetail", findSubtypeDetail(assetHardware));
-        detail.put("informationSystemIds", hardwareSystemRelMapper.selectList(
-                        new LambdaQueryWrapper<AssetHardwareSystemRel>().eq(AssetHardwareSystemRel::getHardwareAssetId, id))
+        List<Long> informationSystemIds = normalizeIds(hardwareSystemRelMapper.selectList(
+                        Wrappers.<AssetHardwareSystemRel>lambdaQuery().eq(AssetHardwareSystemRel::getHardwareAssetId, id))
                 .stream().map(AssetHardwareSystemRel::getInformationSystemId).collect(Collectors.toList()));
-        detail.put("ownerIds", hardwarePersonRelMapper.selectList(
-                        new LambdaQueryWrapper<AssetHardwarePersonRel>()
-                                .eq(AssetHardwarePersonRel::getHardwareAssetId, id)
-                                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name()))
-                .stream().map(AssetHardwarePersonRel::getPersonId).collect(Collectors.toList()));
-        detail.put("vendorIds", hardwareVendorRelMapper.selectList(
-                        new LambdaQueryWrapper<AssetHardwareVendorRel>().eq(AssetHardwareVendorRel::getHardwareAssetId, id))
+        List<Long> serviceProviderIds = normalizeIds(hardwareVendorRelMapper.selectList(
+                        Wrappers.<AssetHardwareVendorRel>lambdaQuery().eq(AssetHardwareVendorRel::getHardwareAssetId, id))
                 .stream().map(AssetHardwareVendorRel::getServiceProviderId).collect(Collectors.toList()));
+        List<Long> projectIds = normalizeIds(projectHardwareRelMapper.selectList(
+                        Wrappers.<ProjectHardwareRel>lambdaQuery().eq(ProjectHardwareRel::getHardwareAssetId, id))
+                .stream().map(ProjectHardwareRel::getProjectId).collect(Collectors.toList()));
+        List<AssetHardwarePersonRel> personRelations = hardwarePersonRelMapper.selectList(
+                Wrappers.<AssetHardwarePersonRel>lambdaQuery()
+                        .eq(AssetHardwarePersonRel::getHardwareAssetId, id)
+                        .orderByAsc(AssetHardwarePersonRel::getRelationType)
+                        .orderByAsc(AssetHardwarePersonRel::getId));
+
+        List<Long> ownerIds = normalizeIds(personRelations.stream()
+                .filter(item -> PersonRelationType.RESPONSIBLE.name().equals(item.getRelationType()))
+                .map(AssetHardwarePersonRel::getPersonId)
+                .collect(Collectors.toList()));
+        List<Long> personIds = normalizeIds(personRelations.stream()
+                .filter(item -> PersonRelationType.USER.name().equals(item.getRelationType()))
+                .map(AssetHardwarePersonRel::getPersonId)
+                .collect(Collectors.toList()));
+
+        Map<String, Object> detail = new LinkedHashMap<String, Object>();
+        detail.put("hardwareAsset", toHardwareView(assetHardware));
+        detail.put("personIds", personIds);
+        detail.put("ownerIds", ownerIds);
+        detail.put("informationSystemIds", informationSystemIds);
+        detail.put("projectIds", projectIds);
+        detail.put("serviceProviderIds", serviceProviderIds);
+        detail.put("vendorIds", serviceProviderIds);
+        detail.put("persons", buildPersonSummaries(personRelations));
+        detail.put("softwareAssets", buildInformationSystemSummaries(informationSystemIds));
+        detail.put("projects", buildProjectSummaries(projectIds));
+        detail.put("serviceProviders", buildServiceProviderSummaries(serviceProviderIds));
+        detail.put("subtypeDetail", null);
         detail.put("lifecycleRecords", assetLifecycleRecordMapper.selectList(
-                new LambdaQueryWrapper<AssetLifecycleRecord>().eq(AssetLifecycleRecord::getHardwareAssetId, id).orderByDesc(AssetLifecycleRecord::getActionTime)));
+                Wrappers.<AssetLifecycleRecord>lambdaQuery()
+                        .eq(AssetLifecycleRecord::getHardwareAssetId, id)
+                        .orderByDesc(AssetLifecycleRecord::getActionTime)));
         return detail;
     }
 
-    /**
-     * 按条件分页查询资源列表。
-     */
-    public PageResponse<AssetHardware> page(int pageNo, int pageSize, String keyword, String hardwareCategory, String hardwareStatus,
-                                            Long departmentId, Long locationId) {
-        if (hardwareStatus != null && !hardwareStatus.trim().isEmpty()) {
-            supportService.ensureHardwareStatusValid(hardwareStatus);
-        }
+    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, String hardwareType,
+                                                  String hardwareCategory, String hardwareStatus, Long locationId) {
+        String resolvedType = StringUtils.hasText(hardwareType) ? hardwareType : hardwareCategory;
+        supportService.ensureHardwareTypeValid(resolvedType);
+        supportService.ensureHardwareStatusValid(hardwareStatus);
+
         LambdaQueryWrapper<AssetHardware> wrapper = new LambdaQueryWrapper<AssetHardware>()
-                .and(keyword != null && !keyword.trim().isEmpty(),
-                        q -> q.like(AssetHardware::getAssetCode, keyword).or().like(AssetHardware::getAssetName, keyword))
-                .eq(hardwareCategory != null && !hardwareCategory.trim().isEmpty(), AssetHardware::getHardwareCategory, hardwareCategory)
-                .eq(hardwareStatus != null && !hardwareStatus.trim().isEmpty(), AssetHardware::getHardwareStatus, hardwareStatus)
-                .eq(departmentId != null, AssetHardware::getDepartmentId, departmentId)
+                .and(StringUtils.hasText(keyword), query -> query
+                        .like(AssetHardware::getAssetCode, keyword)
+                        .or().like(AssetHardware::getAssetName, keyword)
+                        .or().like(AssetHardware::getHardwareIp, keyword)
+                        .or().like(AssetHardware::getHardwareBrand, keyword))
+                .eq(StringUtils.hasText(resolvedType), AssetHardware::getHardwareType, resolvedType)
+                .eq(StringUtils.hasText(hardwareStatus), AssetHardware::getHardwareStatus, hardwareStatus)
                 .eq(locationId != null, AssetHardware::getLocationId, locationId)
                 .orderByAsc(AssetHardware::getAssetCode);
-        return PageResponse.from(assetHardwareMapper.selectPage(new Page<AssetHardware>(pageNo, pageSize), wrapper));
+
+        Page<AssetHardware> page = assetHardwareMapper.selectPage(new Page<AssetHardware>(pageNo, pageSize), wrapper);
+        List<Map<String, Object>> records = page.getRecords().stream().map(this::toHardwareView).collect(Collectors.toList());
+        return new PageResponse<Map<String, Object>>(page.getTotal(), page.getCurrent(), page.getSize(), records);
     }
 
-    /**
-     * 查询可用于下拉选择的硬件资产列表。
-     */
     public List<AssetHardware> options() {
-        return assetHardwareMapper.selectList(new LambdaQueryWrapper<AssetHardware>()
-                .orderByAsc(AssetHardware::getAssetCode));
+        return assetHardwareMapper.selectList(new LambdaQueryWrapper<AssetHardware>().orderByAsc(AssetHardware::getAssetCode));
     }
 
-    /**
-     * 同步硬件与信息系统之间的关联关系。
-     */
+    @Transactional(rollbackFor = Exception.class)
+    public void syncRelations(Long id, HardwareAssetRelationRequest request) {
+        AssetHardware assetHardware = getById(id);
+        syncPersonRelations(id, validatePersonIds(request.getPersonIds()));
+        syncSystems(id, validateInformationSystemIds(request.getInformationSystemIds()));
+        syncProjects(id, validateProjectIds(request.getProjectIds()));
+        syncVendors(id, validateServiceProviderIds(request.getServiceProviderIds()));
+        syncOwnerRelation(assetHardware, assetHardware.getOwnerPersonId(), assetHardware.getContactPhone(), false);
+        auditService.record("HARDWARE_ASSET", id, AuditActionType.RELATION_SYNC,
+                "Synchronized hardware relations", "SYSTEM");
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public void syncSystems(Long id, List<Long> systemIds) {
         getById(id);
-        List<Long> safeIds = systemIds == null ? Collections.<Long>emptyList() : systemIds;
-        for (Long systemId : safeIds) {
-            supportService.ensureInformationSystemExists(systemId);
-        }
-        hardwareSystemRelMapper.delete(new LambdaQueryWrapper<AssetHardwareSystemRel>().eq(AssetHardwareSystemRel::getHardwareAssetId, id));
+        List<Long> safeIds = validateInformationSystemIds(systemIds);
+        hardwareSystemRelMapper.delete(Wrappers.<AssetHardwareSystemRel>lambdaQuery().eq(AssetHardwareSystemRel::getHardwareAssetId, id));
         for (Long systemId : safeIds) {
             AssetHardwareSystemRel relation = new AssetHardwareSystemRel();
             relation.setHardwareAssetId(id);
             relation.setInformationSystemId(systemId);
             hardwareSystemRelMapper.insert(relation);
         }
-        auditService.record("HARDWARE_ASSET", id, AuditActionType.RELATION_SYNC, "Synchronized hardware-system relations", "SYSTEM");
     }
 
-    /**
-     * 同步硬件负责人的关联关系。
-     */
     @Transactional(rollbackFor = Exception.class)
     public void syncOwners(Long id, List<Long> ownerIds) {
-        getById(id);
-        List<Long> safeIds = ownerIds == null ? Collections.<Long>emptyList() : ownerIds;
+        AssetHardware assetHardware = getById(id);
+        List<Long> safeIds = normalizeIds(ownerIds);
         if (safeIds.size() > 1) {
             throw new BusinessException("Only one responsible owner is allowed");
         }
-        for (Long ownerId : safeIds) {
-            supportService.ensurePersonExists(ownerId);
+        Long ownerPersonId = safeIds.isEmpty() ? null : safeIds.get(0);
+        if (ownerPersonId != null) {
+            supportService.ensurePersonExists(ownerPersonId);
         }
-        hardwarePersonRelMapper.delete(new LambdaQueryWrapper<AssetHardwarePersonRel>()
-                .eq(AssetHardwarePersonRel::getHardwareAssetId, id)
-                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name()));
-        for (Long ownerId : safeIds) {
-            AssetHardwarePersonRel relation = new AssetHardwarePersonRel();
-            relation.setHardwareAssetId(id);
-            relation.setPersonId(ownerId);
-            relation.setRelationType(PersonRelationType.RESPONSIBLE.name());
-            hardwarePersonRelMapper.insert(relation);
-        }
-        auditService.record("HARDWARE_ASSET", id, AuditActionType.RELATION_SYNC, "Synchronized hardware-owner relations", "SYSTEM");
+        syncOwnerRelation(assetHardware, ownerPersonId, null, true);
     }
 
-    /**
-     * 同步硬件与服务商之间的关联关系。
-     */
     @Transactional(rollbackFor = Exception.class)
     public void syncVendors(Long id, List<Long> vendorIds) {
         getById(id);
-        List<Long> safeIds = vendorIds == null ? Collections.<Long>emptyList() : vendorIds;
-        for (Long vendorId : safeIds) {
-            supportService.ensureServiceProviderExists(vendorId);
-        }
-        hardwareVendorRelMapper.delete(new LambdaQueryWrapper<AssetHardwareVendorRel>().eq(AssetHardwareVendorRel::getHardwareAssetId, id));
+        List<Long> safeIds = validateServiceProviderIds(vendorIds);
+        hardwareVendorRelMapper.delete(Wrappers.<AssetHardwareVendorRel>lambdaQuery().eq(AssetHardwareVendorRel::getHardwareAssetId, id));
         for (Long vendorId : safeIds) {
             AssetHardwareVendorRel relation = new AssetHardwareVendorRel();
             relation.setHardwareAssetId(id);
             relation.setServiceProviderId(vendorId);
             hardwareVendorRelMapper.insert(relation);
         }
-        auditService.record("HARDWARE_ASSET", id, AuditActionType.RELATION_SYNC, "Synchronized hardware-vendor relations", "SYSTEM");
     }
 
-    /**
-     * 执行硬件生命周期流转动作。
-     */
     @Transactional(rollbackFor = Exception.class)
-    public AssetHardware executeLifecycle(Long id, HardwareLifecycleRequest request) {
-        AssetHardware assetHardware = getById(id);
-        HardwareStatus currentStatus = HardwareStatus.valueOf(assetHardware.getHardwareStatus());
-        HardwareStatus targetStatus = transition(currentStatus, request.getAction());
-        assetHardware.setHardwareStatus(targetStatus.name());
-        assetHardwareMapper.updateById(assetHardware);
-        createLifecycleRecord(id, currentStatus, targetStatus, request.getAction(), request.getReason(), request.getOperator());
-        auditService.record("HARDWARE_ASSET", id, AuditActionType.LIFECYCLE,
-                "Lifecycle action " + request.getAction().name() + " from " + currentStatus.name() + " to " + targetStatus.name(),
-                auditService.defaultOperator(request.getOperator()));
-        return assetHardware;
+    public Map<String, Object> executeLifecycle(Long id, HardwareLifecycleRequest request) {
+        getById(id);
+        throw new BusinessException("硬件新版正式入口不支持生命周期操作");
     }
 
-    /**
-     * 批量导入硬件资产。
-     */
     @Transactional(rollbackFor = Exception.class)
-    public List<AssetHardware> batchImport(HardwareBatchImportRequest request) {
-        return request.getItems().stream().map(this::create).collect(Collectors.toList());
+    public List<Map<String, Object>> batchImport(HardwareBatchImportRequest request) {
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        List<HardwareAssetUpsertRequest> items = request == null ? Collections.<HardwareAssetUpsertRequest>emptyList() : request.getItems();
+        if (items == null) {
+            return result;
+        }
+        for (HardwareAssetUpsertRequest item : items) {
+            result.add(create(item));
+        }
+        return result;
     }
 
-    /**
-     * 导出硬件资产的 CSV 数据。
-     */
     public String exportCsv() {
         List<AssetHardware> list = assetHardwareMapper.selectList(new LambdaQueryWrapper<AssetHardware>().orderByAsc(AssetHardware::getAssetCode));
+        Map<Long, String> ownerNameMap = loadPersonNameMap(list.stream().map(AssetHardware::getOwnerPersonId).collect(Collectors.toList()));
         StringBuilder builder = new StringBuilder();
-        builder.append("assetCode,assetName,hardwareCategory,hardwareStatus,managementIp,businessIp,cpuModel,cpuCores,memoryGb\n");
+        builder.append("assetCode,hardwareIp,assetName,hardwareBrand,hardwareType,ownerName,hardwareStatus\n");
         for (AssetHardware item : list) {
             builder.append(safe(item.getAssetCode())).append(',')
+                    .append(safe(item.getHardwareIp())).append(',')
                     .append(safe(item.getAssetName())).append(',')
-                    .append(safe(item.getHardwareCategory())).append(',')
-                    .append(safe(item.getHardwareStatus())).append(',')
-                    .append(safe(item.getManagementIp())).append(',')
-                    .append(safe(item.getBusinessIp())).append(',')
-                    .append(safe(item.getCpuModel())).append(',')
-                    .append(item.getCpuCores() == null ? "" : item.getCpuCores()).append(',')
-                    .append(item.getMemoryGb() == null ? "" : item.getMemoryGb())
+                    .append(safe(item.getHardwareBrand())).append(',')
+                    .append(safe(item.getHardwareType())).append(',')
+                    .append(safe(ownerNameMap.get(item.getOwnerPersonId()))).append(',')
+                    .append(safe(item.getHardwareStatus()))
                     .append('\n');
         }
         return builder.toString();
     }
 
-    /**
-     * 删除指定主键对应的资源记录，同时级联清理子类型表、关联表和生命周期记录。
-     */
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         AssetHardware existing = getById(id);
-        // 清理子类型扩展表
-        serverMapper.delete(new LambdaQueryWrapper<AssetHardwareServer>().eq(AssetHardwareServer::getHardwareAssetId, id));
-        queryTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareQueryTerminal>().eq(AssetHardwareQueryTerminal::getHardwareAssetId, id));
-        ticketTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareTicketTerminal>().eq(AssetHardwareTicketTerminal::getHardwareAssetId, id));
-        selfServiceTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareSelfServiceTerminal>().eq(AssetHardwareSelfServiceTerminal::getHardwareAssetId, id));
-        // 清理关联关系表
-        hardwareSystemRelMapper.delete(new LambdaQueryWrapper<AssetHardwareSystemRel>().eq(AssetHardwareSystemRel::getHardwareAssetId, id));
-        hardwarePersonRelMapper.delete(new LambdaQueryWrapper<AssetHardwarePersonRel>().eq(AssetHardwarePersonRel::getHardwareAssetId, id));
-        hardwareVendorRelMapper.delete(new LambdaQueryWrapper<AssetHardwareVendorRel>().eq(AssetHardwareVendorRel::getHardwareAssetId, id));
-        // 清理生命周期记录
-        assetLifecycleRecordMapper.delete(new LambdaQueryWrapper<AssetLifecycleRecord>().eq(AssetLifecycleRecord::getHardwareAssetId, id));
-        // 删除主记录
+        serverMapper.delete(Wrappers.<AssetHardwareServer>lambdaQuery().eq(AssetHardwareServer::getHardwareAssetId, id));
+        queryTerminalMapper.delete(Wrappers.<AssetHardwareQueryTerminal>lambdaQuery().eq(AssetHardwareQueryTerminal::getHardwareAssetId, id));
+        ticketTerminalMapper.delete(Wrappers.<AssetHardwareTicketTerminal>lambdaQuery().eq(AssetHardwareTicketTerminal::getHardwareAssetId, id));
+        selfServiceTerminalMapper.delete(Wrappers.<AssetHardwareSelfServiceTerminal>lambdaQuery().eq(AssetHardwareSelfServiceTerminal::getHardwareAssetId, id));
+        hardwareSystemRelMapper.delete(Wrappers.<AssetHardwareSystemRel>lambdaQuery().eq(AssetHardwareSystemRel::getHardwareAssetId, id));
+        hardwarePersonRelMapper.delete(Wrappers.<AssetHardwarePersonRel>lambdaQuery().eq(AssetHardwarePersonRel::getHardwareAssetId, id));
+        hardwareVendorRelMapper.delete(Wrappers.<AssetHardwareVendorRel>lambdaQuery().eq(AssetHardwareVendorRel::getHardwareAssetId, id));
+        projectHardwareRelMapper.delete(Wrappers.<ProjectHardwareRel>lambdaQuery().eq(ProjectHardwareRel::getHardwareAssetId, id));
+        assetLifecycleRecordMapper.delete(Wrappers.<AssetLifecycleRecord>lambdaQuery().eq(AssetLifecycleRecord::getHardwareAssetId, id));
         assetHardwareMapper.deleteById(id);
-        auditService.record("HARDWARE_ASSET", id, AuditActionType.DELETE, "Deleted hardware asset " + existing.getAssetCode(), "SYSTEM");
+        auditService.record("HARDWARE_ASSET", id, AuditActionType.DELETE,
+                "Deleted hardware asset " + existing.getAssetCode(), "SYSTEM");
     }
 
-    private AssetHardware toAsset(HardwareAssetUpsertRequest request) {
+    private void validateRequest(HardwareAssetUpsertRequest request, Long excludeId) {
+        supportService.ensureUniqueAssetCode(request.getAssetCode(), excludeId);
+        supportService.ensureLocationExists(request.getLocationId());
+        supportService.ensureHardwareTypeValid(request.getHardwareType());
+        supportService.ensureHardwareStatusValid(request.getHardwareStatus());
+        supportService.ensurePersonExists(request.getOwnerPersonId());
+    }
+
+    private AssetHardware toEntity(HardwareAssetUpsertRequest request, AssetHardware existing) {
         AssetHardware assetHardware = new AssetHardware();
         assetHardware.setAssetCode(request.getAssetCode());
         assetHardware.setAssetName(request.getAssetName());
-        assetHardware.setHardwareCategory(request.getHardwareCategory().name());
+        assetHardware.setHardwareIp(firstNonBlank(request.getHardwareIp(), request.getManagementIp()));
+        assetHardware.setHardwareModel(request.getHardwareModel());
+        assetHardware.setHardwareBrand(request.getHardwareBrand());
+        assetHardware.setHardwareType(request.getHardwareType());
+        assetHardware.setHardwareCategory(request.getHardwareType());
+        assetHardware.setPhysicalLocation(request.getPhysicalLocation());
         assetHardware.setLocationId(request.getLocationId());
-        assetHardware.setDepartmentId(request.getDepartmentId());
-        assetHardware.setManagementIp(request.getManagementIp());
+        assetHardware.setNetworkEnvironment(request.getNetworkEnvironment());
+        assetHardware.setOperatingSystem(request.getOperatingSystem());
+        assetHardware.setHardwareStatus(StringUtils.hasText(request.getHardwareStatus())
+                ? request.getHardwareStatus()
+                : existing == null ? HardwareStatus.RUNNING.name() : existing.getHardwareStatus());
+        assetHardware.setPurchaseDate(request.getPurchaseDate());
+        assetHardware.setOwnerPersonId(request.getOwnerPersonId());
+        assetHardware.setContactPhone(request.getContactPhone());
+        assetHardware.setRemark(request.getRemark());
+
+        assetHardware.setManagementIp(firstNonBlank(request.getManagementIp(), request.getHardwareIp()));
         assetHardware.setBusinessIp(request.getBusinessIp());
         assetHardware.setCpuModel(request.getCpuModel());
         assetHardware.setCpuCores(request.getCpuCores());
         assetHardware.setMemoryGb(request.getMemoryGb());
-        assetHardware.setEnabledDate(request.getEnabledDate());
-        assetHardware.setRemark(request.getRemark());
+        assetHardware.setEnabledDate(request.getEnabledDate() != null ? request.getEnabledDate() : request.getPurchaseDate());
+        assetHardware.setDepartmentId(existing == null ? null : existing.getDepartmentId());
         return assetHardware;
     }
 
-    private Object findSubtypeDetail(AssetHardware assetHardware) {
-        HardwareCategory category = HardwareCategory.valueOf(assetHardware.getHardwareCategory());
-        if (category == HardwareCategory.SERVER) {
-            return serverMapper.selectOne(new LambdaQueryWrapper<AssetHardwareServer>().eq(AssetHardwareServer::getHardwareAssetId, assetHardware.getId()));
-        }
-        if (category == HardwareCategory.QUERY_TERMINAL) {
-            return queryTerminalMapper.selectOne(new LambdaQueryWrapper<AssetHardwareQueryTerminal>().eq(AssetHardwareQueryTerminal::getHardwareAssetId, assetHardware.getId()));
-        }
-        if (category == HardwareCategory.TICKET_TERMINAL) {
-            return ticketTerminalMapper.selectOne(new LambdaQueryWrapper<AssetHardwareTicketTerminal>().eq(AssetHardwareTicketTerminal::getHardwareAssetId, assetHardware.getId()));
-        }
-        return selfServiceTerminalMapper.selectOne(
-                new LambdaQueryWrapper<AssetHardwareSelfServiceTerminal>().eq(AssetHardwareSelfServiceTerminal::getHardwareAssetId, assetHardware.getId()));
+    private Map<String, Object> toHardwareView(AssetHardware assetHardware) {
+        Map<Long, String> ownerNameMap = loadPersonNameMap(Collections.singletonList(assetHardware.getOwnerPersonId()));
+        Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("id", assetHardware.getId());
+        view.put("assetCode", assetHardware.getAssetCode());
+        view.put("assetName", assetHardware.getAssetName());
+        view.put("hardwareIp", assetHardware.getHardwareIp());
+        view.put("hardwareModel", assetHardware.getHardwareModel());
+        view.put("hardwareBrand", assetHardware.getHardwareBrand());
+        view.put("hardwareType", assetHardware.getHardwareType());
+        view.put("hardwareCategory", assetHardware.getHardwareCategory());
+        view.put("physicalLocation", assetHardware.getPhysicalLocation());
+        view.put("locationId", assetHardware.getLocationId());
+        view.put("networkEnvironment", assetHardware.getNetworkEnvironment());
+        view.put("operatingSystem", assetHardware.getOperatingSystem());
+        view.put("hardwareStatus", assetHardware.getHardwareStatus());
+        view.put("purchaseDate", assetHardware.getPurchaseDate());
+        view.put("ownerPersonId", assetHardware.getOwnerPersonId());
+        view.put("ownerName", ownerNameMap.get(assetHardware.getOwnerPersonId()));
+        view.put("contactPhone", assetHardware.getContactPhone());
+        view.put("remark", assetHardware.getRemark());
+        view.put("managementIp", assetHardware.getManagementIp());
+        view.put("businessIp", assetHardware.getBusinessIp());
+        view.put("cpuModel", assetHardware.getCpuModel());
+        view.put("cpuCores", assetHardware.getCpuCores());
+        view.put("memoryGb", assetHardware.getMemoryGb());
+        view.put("enabledDate", assetHardware.getEnabledDate());
+        view.put("createdAt", assetHardware.getCreatedAt());
+        view.put("updatedAt", assetHardware.getUpdatedAt());
+        return view;
     }
 
-    private void upsertSubtype(Long hardwareAssetId, HardwareAssetUpsertRequest request) {
-        HardwareCategory category = request.getHardwareCategory();
-        if (category == HardwareCategory.SERVER) {
-            serverMapper.delete(new LambdaQueryWrapper<AssetHardwareServer>().eq(AssetHardwareServer::getHardwareAssetId, hardwareAssetId));
-            AssetHardwareServer detail = new AssetHardwareServer();
-            detail.setHardwareAssetId(hardwareAssetId);
-            detail.setOperatingSystem(request.getOperatingSystem());
-            detail.setDiskGb(request.getDiskGb());
-            detail.setVirtualization(request.getVirtualization());
-            serverMapper.insert(detail);
+    private void syncOwnerRelation(AssetHardware assetHardware, Long ownerPersonId, String contactPhone, boolean updateEntity) {
+        if (ownerPersonId != null) {
+            supportService.ensurePersonExists(ownerPersonId);
+        }
+        if (updateEntity) {
+            assetHardware.setOwnerPersonId(ownerPersonId);
+            if (StringUtils.hasText(contactPhone)) {
+                assetHardware.setContactPhone(contactPhone);
+            } else if (ownerPersonId != null) {
+                Person owner = personMapper.selectById(ownerPersonId);
+                assetHardware.setContactPhone(owner == null ? assetHardware.getContactPhone() : owner.getMobile());
+            }
+            assetHardwareMapper.updateById(assetHardware);
+        }
+        hardwarePersonRelMapper.delete(Wrappers.<AssetHardwarePersonRel>lambdaQuery()
+                .eq(AssetHardwarePersonRel::getHardwareAssetId, assetHardware.getId())
+                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name()));
+        if (ownerPersonId == null) {
             return;
         }
-        if (category == HardwareCategory.QUERY_TERMINAL) {
-            queryTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareQueryTerminal>().eq(AssetHardwareQueryTerminal::getHardwareAssetId, hardwareAssetId));
-            AssetHardwareQueryTerminal detail = new AssetHardwareQueryTerminal();
-            detail.setHardwareAssetId(hardwareAssetId);
-            detail.setScreenSize(request.getScreenSize());
-            detail.setTouchEnabled(Boolean.TRUE.equals(request.getTouchEnabled()) ? 1 : 0);
-            detail.setDeviceModel(request.getDeviceModel());
-            queryTerminalMapper.insert(detail);
-            return;
-        }
-        if (category == HardwareCategory.TICKET_TERMINAL) {
-            ticketTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareTicketTerminal>().eq(AssetHardwareTicketTerminal::getHardwareAssetId, hardwareAssetId));
-            AssetHardwareTicketTerminal detail = new AssetHardwareTicketTerminal();
-            detail.setHardwareAssetId(hardwareAssetId);
-            detail.setPrinterModel(request.getPrinterModel());
-            detail.setSupportQr(Boolean.TRUE.equals(request.getSupportQr()) ? 1 : 0);
-            detail.setDeviceModel(request.getDeviceModel());
-            ticketTerminalMapper.insert(detail);
-            return;
-        }
-        selfServiceTerminalMapper.delete(new LambdaQueryWrapper<AssetHardwareSelfServiceTerminal>().eq(AssetHardwareSelfServiceTerminal::getHardwareAssetId, hardwareAssetId));
-        AssetHardwareSelfServiceTerminal detail = new AssetHardwareSelfServiceTerminal();
-        detail.setHardwareAssetId(hardwareAssetId);
-        detail.setTerminalType(request.getTerminalType());
-        detail.setScreenSize(request.getScreenSize());
-        detail.setDeviceModel(request.getDeviceModel());
-        selfServiceTerminalMapper.insert(detail);
+        AssetHardwarePersonRel relation = new AssetHardwarePersonRel();
+        relation.setHardwareAssetId(assetHardware.getId());
+        relation.setPersonId(ownerPersonId);
+        relation.setRelationType(PersonRelationType.RESPONSIBLE.name());
+        hardwarePersonRelMapper.insert(relation);
     }
 
-    private void createLifecycleRecord(Long hardwareAssetId, HardwareStatus fromStatus, HardwareStatus toStatus,
-                                       LifecycleActionType actionType, String reason, String operator) {
-        AssetLifecycleRecord record = new AssetLifecycleRecord();
-        record.setHardwareAssetId(hardwareAssetId);
-        record.setActionType(actionType.name());
-        record.setFromStatus(fromStatus == null ? null : fromStatus.name());
-        record.setToStatus(toStatus.name());
-        record.setReason(reason);
-        record.setOperator(auditService.defaultOperator(operator));
-        record.setActionTime(LocalDateTime.now());
-        assetLifecycleRecordMapper.insert(record);
+    private void syncPersonRelations(Long hardwareAssetId, List<Long> personIds) {
+        hardwarePersonRelMapper.delete(Wrappers.<AssetHardwarePersonRel>lambdaQuery()
+                .eq(AssetHardwarePersonRel::getHardwareAssetId, hardwareAssetId)
+                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.USER.name()));
+        for (Long personId : personIds) {
+            AssetHardwarePersonRel relation = new AssetHardwarePersonRel();
+            relation.setHardwareAssetId(hardwareAssetId);
+            relation.setPersonId(personId);
+            relation.setRelationType(PersonRelationType.USER.name());
+            hardwarePersonRelMapper.insert(relation);
+        }
     }
 
-    private HardwareStatus transition(HardwareStatus currentStatus, LifecycleActionType actionType) {
-        Map<LifecycleActionType, List<HardwareStatus>> allowed = new LinkedHashMap<LifecycleActionType, List<HardwareStatus>>();
-        allowed.put(LifecycleActionType.IN_STOCK, Arrays.asList(HardwareStatus.REGISTERED));
-        allowed.put(LifecycleActionType.ASSIGN, Arrays.asList(HardwareStatus.IN_STOCK, HardwareStatus.IDLE));
-        allowed.put(LifecycleActionType.CHANGE, Arrays.asList(HardwareStatus.ASSIGNED));
-        allowed.put(LifecycleActionType.IDLE, Arrays.asList(HardwareStatus.ASSIGNED, HardwareStatus.CHANGED));
-        allowed.put(LifecycleActionType.MAINTAIN, Arrays.asList(HardwareStatus.ASSIGNED, HardwareStatus.IDLE, HardwareStatus.CHANGED));
-        allowed.put(LifecycleActionType.OFFLINE, Arrays.asList(HardwareStatus.IDLE, HardwareStatus.MAINTAINING, HardwareStatus.CHANGED));
-        allowed.put(LifecycleActionType.SCRAP, Arrays.asList(HardwareStatus.OFFLINE));
+    private void syncProjects(Long hardwareAssetId, List<Long> projectIds) {
+        projectHardwareRelMapper.delete(Wrappers.<ProjectHardwareRel>lambdaQuery().eq(ProjectHardwareRel::getHardwareAssetId, hardwareAssetId));
+        for (Long projectId : projectIds) {
+            ProjectHardwareRel relation = new ProjectHardwareRel();
+            relation.setHardwareAssetId(hardwareAssetId);
+            relation.setProjectId(projectId);
+            projectHardwareRelMapper.insert(relation);
+        }
+    }
 
-        if (actionType == LifecycleActionType.REGISTER) {
-            throw new BusinessException("REGISTER action is only used during creation");
+    private List<Map<String, Object>> buildPersonSummaries(List<AssetHardwarePersonRel> relations) {
+        List<Long> personIds = relations.stream().map(AssetHardwarePersonRel::getPersonId).collect(Collectors.toList());
+        Map<Long, Person> personMap = personMapper.selectList(Wrappers.<Person>lambdaQuery().in(Person::getId, normalizeIds(personIds)))
+                .stream()
+                .collect(Collectors.toMap(Person::getId, item -> item));
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (AssetHardwarePersonRel relation : relations) {
+            Person person = personMap.get(relation.getPersonId());
+            if (person == null) {
+                continue;
+            }
+            Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("id", person.getId());
+            summary.put("name", person.getName());
+            summary.put("employeeNo", person.getEmployeeNo());
+            summary.put("mobile", person.getMobile());
+            summary.put("relationType", relation.getRelationType());
+            summary.put("relationLabel", PersonRelationType.RESPONSIBLE.name().equals(relation.getRelationType()) ? "设备负责人" : "关联人员");
+            result.add(summary);
         }
-        List<HardwareStatus> from = allowed.get(actionType);
-        if (from == null || !from.contains(currentStatus)) {
-            throw new BusinessException("Illegal lifecycle transition: " + currentStatus.name() + " -> " + actionType.name());
+        return result;
+    }
+
+    private List<Map<String, Object>> buildInformationSystemSummaries(List<Long> informationSystemIds) {
+        List<Long> normalizedIds = normalizeIds(informationSystemIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
         }
-        if (actionType == LifecycleActionType.IN_STOCK) {
-            return HardwareStatus.IN_STOCK;
+        Map<Long, InformationSystem> systemMap = informationSystemMapper.selectList(
+                        Wrappers.<InformationSystem>lambdaQuery().in(InformationSystem::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(InformationSystem::getId, item -> item));
+        Map<Long, Long> vendorIdMap = systemVendorRelMapper.selectList(
+                        Wrappers.<SystemVendorRel>lambdaQuery().in(SystemVendorRel::getInformationSystemId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(SystemVendorRel::getInformationSystemId, SystemVendorRel::getServiceProviderId, (left, right) -> left));
+        Map<Long, String> vendorNameMap = loadServiceProviderNameMap(vendorIdMap.values().stream().collect(Collectors.toList()));
+        Map<Long, String> ownerNameMap = loadPersonNameMap(systemMap.values().stream()
+                .map(InformationSystem::getOwnerPersonId)
+                .collect(Collectors.toList()));
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (Long id : normalizedIds) {
+            InformationSystem item = systemMap.get(id);
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("id", item.getId());
+            summary.put("code", item.getCode());
+            summary.put("name", item.getName());
+            summary.put("systemType", item.getSystemType());
+            summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
+            summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
+            result.add(summary);
         }
-        if (actionType == LifecycleActionType.ASSIGN) {
-            return HardwareStatus.ASSIGNED;
+        return result;
+    }
+
+    private List<Map<String, Object>> buildProjectSummaries(List<Long> projectIds) {
+        List<Long> normalizedIds = normalizeIds(projectIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
         }
-        if (actionType == LifecycleActionType.CHANGE) {
-            return HardwareStatus.CHANGED;
+        Map<Long, ProjectInfo> projectMap = projectInfoMapper.selectList(
+                        Wrappers.<ProjectInfo>lambdaQuery().in(ProjectInfo::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(ProjectInfo::getId, item -> item));
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (Long id : normalizedIds) {
+            ProjectInfo item = projectMap.get(id);
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("id", item.getId());
+            summary.put("code", item.getCode());
+            summary.put("name", item.getName());
+            summary.put("projectType", item.getProjectType());
+            summary.put("projectStatus", item.getProjectStatus());
+            summary.put("ownerName", item.getOwnerName());
+            result.add(summary);
         }
-        if (actionType == LifecycleActionType.IDLE) {
-            return HardwareStatus.IDLE;
+        return result;
+    }
+
+    private List<Map<String, Object>> buildServiceProviderSummaries(List<Long> serviceProviderIds) {
+        List<Long> normalizedIds = normalizeIds(serviceProviderIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
         }
-        if (actionType == LifecycleActionType.MAINTAIN) {
-            return HardwareStatus.MAINTAINING;
+        Map<Long, ServiceProvider> providerMap = serviceProviderMapper.selectList(
+                        Wrappers.<ServiceProvider>lambdaQuery().in(ServiceProvider::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(ServiceProvider::getId, item -> item));
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (Long id : normalizedIds) {
+            ServiceProvider item = providerMap.get(id);
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("id", item.getId());
+            summary.put("code", item.getCode());
+            summary.put("name", item.getName());
+            summary.put("unifiedSocialCreditCode", item.getUnifiedSocialCreditCode());
+            summary.put("businessContact", item.getBusinessContact());
+            summary.put("businessPhone", item.getBusinessPhone());
+            result.add(summary);
         }
-        if (actionType == LifecycleActionType.OFFLINE) {
-            return HardwareStatus.OFFLINE;
+        return result;
+    }
+
+    private Long countByHardwareType(String hardwareType) {
+        return assetHardwareMapper.selectCount(Wrappers.<AssetHardware>lambdaQuery().eq(AssetHardware::getHardwareType, hardwareType));
+    }
+
+    private List<Long> validatePersonIds(List<Long> personIds) {
+        List<Long> normalizedIds = normalizeIds(personIds);
+        for (Long personId : normalizedIds) {
+            supportService.ensurePersonExists(personId);
         }
-        return HardwareStatus.SCRAPPED;
+        return normalizedIds;
+    }
+
+    private List<Long> validateInformationSystemIds(List<Long> informationSystemIds) {
+        List<Long> normalizedIds = normalizeIds(informationSystemIds);
+        for (Long informationSystemId : normalizedIds) {
+            supportService.ensureInformationSystemExists(informationSystemId);
+        }
+        return normalizedIds;
+    }
+
+    private List<Long> validateProjectIds(List<Long> projectIds) {
+        List<Long> normalizedIds = normalizeIds(projectIds);
+        for (Long projectId : normalizedIds) {
+            supportService.ensureProjectExists(projectId);
+        }
+        return normalizedIds;
+    }
+
+    private List<Long> validateServiceProviderIds(List<Long> serviceProviderIds) {
+        List<Long> normalizedIds = normalizeIds(serviceProviderIds);
+        for (Long serviceProviderId : normalizedIds) {
+            supportService.ensureServiceProviderExists(serviceProviderId);
+        }
+        return normalizedIds;
+    }
+
+    private List<Long> normalizeIds(List<Long> ids) {
+        if (ids == null) {
+            return Collections.emptyList();
+        }
+        return ids.stream().filter(item -> item != null).distinct().collect(Collectors.toList());
+    }
+
+    private Map<Long, String> loadPersonNameMap(List<Long> personIds) {
+        List<Long> normalizedIds = normalizeIds(personIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return personMapper.selectList(Wrappers.<Person>lambdaQuery().in(Person::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(Person::getId, Person::getName));
+    }
+
+    private Map<Long, String> loadServiceProviderNameMap(List<Long> serviceProviderIds) {
+        List<Long> normalizedIds = normalizeIds(serviceProviderIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return serviceProviderMapper.selectList(Wrappers.<ServiceProvider>lambdaQuery().in(ServiceProvider::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(ServiceProvider::getId, ServiceProvider::getName));
     }
 
     private String safe(String value) {
         return value == null ? "" : value.replace(",", " ");
     }
+
+    private String firstNonBlank(String primary, String fallback) {
+        return StringUtils.hasText(primary) ? primary : fallback;
+    }
 }
-
-
-
-
-

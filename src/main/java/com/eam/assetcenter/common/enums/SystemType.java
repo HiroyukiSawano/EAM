@@ -6,10 +6,23 @@ package com.eam.assetcenter.common.enums;
 public enum SystemType {
     EXTERNAL_SERVICE,
     INTERNAL_OFFICE,
-    SUPPORT_SYSTEM
+    DATABASE_SOFTWARE,
+    BASIC_SUPPORT,
+    SECURITY_SOFTWARE;
+
+    /**
+     * 判断信息系统类型是否合法。
+     */
+    public static boolean isValid(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return false;
+        }
+        for (SystemType item : values()) {
+            if (item.name().equals(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
-
-
-
-
 

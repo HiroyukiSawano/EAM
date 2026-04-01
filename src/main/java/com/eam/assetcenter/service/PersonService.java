@@ -469,18 +469,8 @@ public class PersonService {
                 .map(SystemVendorRel::getServiceProviderId)
                 .collect(Collectors.toList()));
 
-        Map<Long, Long> ownerIdMap = new LinkedHashMap<Long, Long>();
-        List<SystemPersonRel> personRelations = systemPersonRelMapper.selectList(
-                Wrappers.<SystemPersonRel>lambdaQuery()
-                        .in(SystemPersonRel::getInformationSystemId, normalizedIds)
-                        .eq(SystemPersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name())
-                        .orderByAsc(SystemPersonRel::getInformationSystemId)
-                        .orderByAsc(SystemPersonRel::getId));
-        for (SystemPersonRel relation : personRelations) {
-            ownerIdMap.putIfAbsent(relation.getInformationSystemId(), relation.getPersonId());
-        }
-        Map<Long, String> ownerNameMap = loadPersonNameMap(personRelations.stream()
-                .map(SystemPersonRel::getPersonId)
+        Map<Long, String> ownerNameMap = loadPersonNameMap(systemMap.values().stream()
+                .map(InformationSystem::getOwnerPersonId)
                 .collect(Collectors.toList()));
 
         return normalizedIds.stream()
@@ -494,7 +484,7 @@ public class PersonService {
                     summary.put("systemType", item.getSystemType());
                     summary.put("status", item.getStatus());
                     summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
-                    summary.put("ownerName", ownerNameMap.get(ownerIdMap.get(item.getId())));
+                    summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
                     return summary;
                 })
                 .collect(Collectors.toList());

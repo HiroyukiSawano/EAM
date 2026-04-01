@@ -4,11 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.eam.assetcenter.common.enums.CommonStatus;
 import com.eam.assetcenter.common.enums.CooperationScope;
 import com.eam.assetcenter.common.enums.EnterpriseNature;
+import com.eam.assetcenter.common.enums.HardwareCategory;
 import com.eam.assetcenter.common.enums.HardwareStatus;
 import com.eam.assetcenter.common.enums.PaymentStatus;
 import com.eam.assetcenter.common.enums.PersonType;
+import com.eam.assetcenter.common.enums.DeploymentArchitecture;
 import com.eam.assetcenter.common.enums.ProjectType;
 import com.eam.assetcenter.common.enums.ProjectStatus;
+import com.eam.assetcenter.common.enums.SystemType;
 import com.eam.assetcenter.common.enums.VendorLevel;
 import com.eam.assetcenter.common.exception.BusinessException;
 import com.eam.assetcenter.domain.entity.AssetHardware;
@@ -135,6 +138,25 @@ public class SupportService {
     }
 
     /**
+     * 校验信息系统类型是否合法。
+     */
+    public void ensureSystemTypeValid(String systemType) {
+        if (systemType != null && !systemType.trim().isEmpty() && !SystemType.isValid(systemType)) {
+            throw new BusinessException("信息系统类型不合法: " + systemType);
+        }
+    }
+
+    /**
+     * 校验部署架构是否合法。
+     */
+    public void ensureDeploymentArchitectureValid(String deploymentArchitecture) {
+        if (deploymentArchitecture != null && !deploymentArchitecture.trim().isEmpty()
+                && !DeploymentArchitecture.isValid(deploymentArchitecture)) {
+            throw new BusinessException("部署架构不合法: " + deploymentArchitecture);
+        }
+    }
+
+    /**
      * 校验项目编码是否唯一。
      */
     public void ensureUniqueProjectCode(String code, Long excludeId) {
@@ -146,6 +168,15 @@ public class SupportService {
      */
     public void ensureUniqueAssetCode(String code, Long excludeId) {
         ensureUnique(assetHardwareMapper.selectOne(new LambdaQueryWrapper<AssetHardware>().eq(AssetHardware::getAssetCode, code)), excludeId, "Hardware asset code already exists");
+    }
+
+    /**
+     * 校验硬件类型是否合法。
+     */
+    public void ensureHardwareTypeValid(String hardwareType) {
+        if (hardwareType != null && !hardwareType.trim().isEmpty() && !HardwareCategory.isValid(hardwareType)) {
+            throw new BusinessException("硬件类型不合法: " + hardwareType);
+        }
     }
 
     /**
@@ -238,7 +269,7 @@ public class SupportService {
      * 校验硬件状态是否合法。
      */
     public void ensureHardwareStatusValid(String status) {
-        if (!HardwareStatus.isValid(status)) {
+        if (status != null && !status.trim().isEmpty() && !HardwareStatus.isValid(status)) {
             throw new BusinessException("硬件状态不合法: " + status);
         }
     }

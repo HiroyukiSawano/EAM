@@ -20,7 +20,6 @@ import com.eam.assetcenter.domain.entity.ProjectSystemRel;
 import com.eam.assetcenter.domain.entity.ProjectVendorRel;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.domain.entity.ServiceProviderCooperationScopeRel;
-import com.eam.assetcenter.domain.entity.SystemPersonRel;
 import com.eam.assetcenter.domain.entity.SystemVendorRel;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareVendorRelMapper;
@@ -34,7 +33,6 @@ import com.eam.assetcenter.infrastructure.mapper.ProjectSystemRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderCooperationScopeRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
-import com.eam.assetcenter.infrastructure.mapper.SystemPersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
 import com.eam.assetcenter.web.request.ProjectDocumentRequest;
 import com.eam.assetcenter.web.request.ProjectRelationRequest;
@@ -68,7 +66,6 @@ public class ProjectService {
     private final ProjectHardwareRelMapper projectHardwareRelMapper;
     private final InformationSystemMapper informationSystemMapper;
     private final SystemVendorRelMapper systemVendorRelMapper;
-    private final SystemPersonRelMapper systemPersonRelMapper;
     private final ServiceProviderMapper serviceProviderMapper;
     private final ServiceProviderCooperationScopeRelMapper serviceProviderCooperationScopeRelMapper;
     private final PersonMapper personMapper;
@@ -430,18 +427,8 @@ public class ProjectService {
                 .map(SystemVendorRel::getServiceProviderId)
                 .collect(Collectors.toList()));
 
-        Map<Long, Long> ownerIdMap = new LinkedHashMap<Long, Long>();
-        List<SystemPersonRel> ownerRelations = systemPersonRelMapper.selectList(
-                Wrappers.<SystemPersonRel>lambdaQuery()
-                        .in(SystemPersonRel::getInformationSystemId, normalizedIds)
-                        .eq(SystemPersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name())
-                        .orderByAsc(SystemPersonRel::getInformationSystemId)
-                        .orderByAsc(SystemPersonRel::getId));
-        for (SystemPersonRel relation : ownerRelations) {
-            ownerIdMap.putIfAbsent(relation.getInformationSystemId(), relation.getPersonId());
-        }
-        Map<Long, String> ownerNameMap = loadPersonNameMap(ownerRelations.stream()
-                .map(SystemPersonRel::getPersonId)
+        Map<Long, String> ownerNameMap = loadPersonNameMap(systemMap.values().stream()
+                .map(InformationSystem::getOwnerPersonId)
                 .collect(Collectors.toList()));
 
         return normalizedIds.stream()
@@ -454,7 +441,7 @@ public class ProjectService {
                     summary.put("code", item.getCode());
                     summary.put("systemType", item.getSystemType());
                     summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
-                    summary.put("ownerName", ownerNameMap.get(ownerIdMap.get(item.getId())));
+                    summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
                     return summary;
                 })
                 .collect(Collectors.toList());

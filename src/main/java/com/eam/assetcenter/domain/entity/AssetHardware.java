@@ -43,6 +43,66 @@ public class AssetHardware extends BaseEntity {
     private String hardwareCategory;
 
     /**
+     * 硬件 IP。
+     */
+    @Schema(description = "硬件 IP")
+    private String hardwareIp;
+
+    /**
+     * 硬件型号。
+     */
+    @Schema(description = "硬件型号")
+    private String hardwareModel;
+
+    /**
+     * 硬件品牌。
+     */
+    @Schema(description = "硬件品牌")
+    private String hardwareBrand;
+
+    /**
+     * 硬件类型。
+     */
+    @Schema(description = "硬件类型")
+    private String hardwareType;
+
+    /**
+     * 物理位置。
+     */
+    @Schema(description = "物理位置")
+    private String physicalLocation;
+
+    /**
+     * 网络环境。
+     */
+    @Schema(description = "网络环境")
+    private String networkEnvironment;
+
+    /**
+     * 操作系统。
+     */
+    @Schema(description = "操作系统")
+    private String operatingSystem;
+
+    /**
+     * 采购时间。
+     */
+    @Schema(description = "采购时间")
+    private LocalDate purchaseDate;
+
+    /**
+     * 设备负责人主键。
+     */
+    @Schema(description = "设备负责人主键")
+    private Long ownerPersonId;
+
+    /**
+     * 联系电话。
+     */
+    @Schema(description = "联系电话")
+    private String contactPhone;
+
+    /**
      * 位置主键。
      */
     @Schema(description = "位置主键")

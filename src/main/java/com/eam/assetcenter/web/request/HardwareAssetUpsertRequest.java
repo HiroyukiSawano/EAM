@@ -1,10 +1,9 @@
 package com.eam.assetcenter.web.request;
 
-import com.eam.assetcenter.common.enums.HardwareCategory;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+
 import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotNull;
 import java.time.LocalDate;
 
 /**
@@ -29,11 +28,35 @@ public class HardwareAssetUpsertRequest {
     private String assetName;
 
     /**
-     * 硬件分类。
+     * 硬件 IP。
      */
-    @Schema(description = "硬件分类")
-    @NotNull(message = "hardwareCategory is required")
-    private HardwareCategory hardwareCategory;
+    @Schema(description = "硬件 IP")
+    private String hardwareIp;
+
+    /**
+     * 硬件型号。
+     */
+    @Schema(description = "硬件型号")
+    private String hardwareModel;
+
+    /**
+     * 硬件品牌。
+     */
+    @Schema(description = "硬件品牌")
+    private String hardwareBrand;
+
+    /**
+     * 硬件类型。
+     */
+    @Schema(description = "硬件类型")
+    @NotBlank(message = "hardwareType is required")
+    private String hardwareType;
+
+    /**
+     * 物理位置。
+     */
+    @Schema(description = "物理位置")
+    private String physicalLocation;
 
     /**
      * 位置主键。
@@ -42,10 +65,46 @@ public class HardwareAssetUpsertRequest {
     private Long locationId;
 
     /**
-     * 所属部门主键。
+     * 网络环境。
      */
-    @Schema(description = "所属部门主键")
-    private Long departmentId;
+    @Schema(description = "网络环境")
+    private String networkEnvironment;
+
+    /**
+     * 操作系统。
+     */
+    @Schema(description = "操作系统")
+    private String operatingSystem;
+
+    /**
+     * 当前状态。
+     */
+    @Schema(description = "当前状态")
+    private String hardwareStatus;
+
+    /**
+     * 采购时间。
+     */
+    @Schema(description = "采购时间")
+    private LocalDate purchaseDate;
+
+    /**
+     * 设备负责人主键。
+     */
+    @Schema(description = "设备负责人主键")
+    private Long ownerPersonId;
+
+    /**
+     * 联系电话。
+     */
+    @Schema(description = "联系电话")
+    private String contactPhone;
+
+    /**
+     * 备注。
+     */
+    @Schema(description = "备注")
+    private String remark;
 
     /**
      * 管理 IP 地址。
@@ -82,64 +141,4 @@ public class HardwareAssetUpsertRequest {
      */
     @Schema(description = "启用日期")
     private LocalDate enabledDate;
-
-    /**
-     * 备注。
-     */
-    @Schema(description = "备注")
-    private String remark;
-
-    /**
-     * 操作系统。
-     */
-    @Schema(description = "操作系统")
-    private String operatingSystem;
-
-    /**
-     * 磁盘容量，单位 GB。
-     */
-    @Schema(description = "磁盘容量，单位 GB")
-    private Integer diskGb;
-
-    /**
-     * 虚拟化方式。
-     */
-    @Schema(description = "虚拟化方式")
-    private String virtualization;
-
-    /**
-     * 屏幕尺寸。
-     */
-    @Schema(description = "屏幕尺寸")
-    private String screenSize;
-
-    /**
-     * 是否支持触摸。
-     */
-    @Schema(description = "是否支持触摸")
-    private Boolean touchEnabled;
-
-    /**
-     * 设备型号。
-     */
-    @Schema(description = "设备型号")
-    private String deviceModel;
-
-    /**
-     * 打印机型号。
-     */
-    @Schema(description = "打印机型号")
-    private String printerModel;
-
-    /**
-     * 是否支持二维码。
-     */
-    @Schema(description = "是否支持二维码")
-    private Boolean supportQr;
-
-    /**
-     * 自助终端类型。
-     */
-    @Schema(description = "自助终端类型")
-    private String terminalType;
 }

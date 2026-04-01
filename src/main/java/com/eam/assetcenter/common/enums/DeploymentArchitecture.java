@@ -1,22 +1,21 @@
 package com.eam.assetcenter.common.enums;
 
 /**
- * 硬件资产分类枚举。
+ * 软件部署架构枚举。
  */
-public enum HardwareCategory {
-    SERVER,
-    NETWORK_DEVICE,
-    TERMINAL_DEVICE,
-    PERIPHERAL;
+public enum DeploymentArchitecture {
+    SINGLE,
+    CLUSTER,
+    CONTAINERIZED;
 
     /**
-     * 判断分类值是否有效。
+     * 判断部署架构是否合法。
      */
     public static boolean isValid(String value) {
         if (value == null || value.trim().isEmpty()) {
             return false;
         }
-        for (HardwareCategory item : values()) {
+        for (DeploymentArchitecture item : values()) {
             if (item.name().equals(value)) {
                 return true;
             }
@@ -24,8 +23,3 @@ public enum HardwareCategory {
         return false;
     }
 }
-
-
-
-
-

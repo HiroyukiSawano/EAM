@@ -4,6 +4,7 @@ import com.eam.assetcenter.common.api.ApiResponse;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.service.HardwareAssetService;
+import com.eam.assetcenter.web.request.HardwareAssetRelationRequest;
 import com.eam.assetcenter.web.request.HardwareAssetUpsertRequest;
 import com.eam.assetcenter.web.request.HardwareBatchImportRequest;
 import com.eam.assetcenter.web.request.HardwareLifecycleRequest;
@@ -26,11 +27,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 硬件资产控制器，提供硬件台账、关系维护和生命周期接口。
+ * 硬件资产控制器，提供新版硬件台账、统计和关联维护接口。
  */
 @Tag(name = "硬件资产")
 @RestController
@@ -40,60 +42,56 @@ public class HardwareAssetController {
 
     private final HardwareAssetService hardwareAssetService;
 
-    /**
-     * 新增资源记录。
-     */
     @Operation(summary = "新增硬件资产")
     @PostMapping
-    public ApiResponse<AssetHardware> create(@Validated @RequestBody HardwareAssetUpsertRequest request) {
+    public ApiResponse<Map<String, Object>> create(@Validated @RequestBody HardwareAssetUpsertRequest request) {
         return ApiResponse.success(hardwareAssetService.create(request));
     }
 
-    /**
-     * 更新指定主键对应的资源记录。
-     */
     @Operation(summary = "更新硬件资产")
     @PutMapping("/{id}")
-    public ApiResponse<AssetHardware> update(@PathVariable Long id, @Validated @RequestBody HardwareAssetUpsertRequest request) {
+    public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @Validated @RequestBody HardwareAssetUpsertRequest request) {
         return ApiResponse.success(hardwareAssetService.update(id, request));
     }
 
-    /**
-     * 查询指定主键对应的资源详情。
-     */
+    @Operation(summary = "查询硬件统计")
+    @GetMapping("/stats")
+    public ApiResponse<Map<String, Object>> stats() {
+        return ApiResponse.success(hardwareAssetService.stats());
+    }
+
     @Operation(summary = "查询硬件资产详情")
     @GetMapping("/{id}")
     public ApiResponse<Map<String, Object>> get(@PathVariable Long id) {
         return ApiResponse.success(hardwareAssetService.getDetail(id));
     }
 
-    /**
-     * 按条件分页查询资源列表。
-     */
     @Operation(summary = "分页查询硬件资产")
     @GetMapping
-    public ApiResponse<PageResponse<AssetHardware>> page(@RequestParam(defaultValue = "1") int pageNo,
-                                                         @RequestParam(defaultValue = "10") int pageSize,
-                                                         @RequestParam(required = false) String keyword,
-                                                         @RequestParam(required = false) String hardwareCategory,
-                                                         @RequestParam(required = false) String hardwareStatus,
-                                                         @RequestParam(required = false) Long departmentId,
-                                                         @RequestParam(required = false) Long locationId) {
-        return ApiResponse.success(hardwareAssetService.page(pageNo, pageSize, keyword, hardwareCategory, hardwareStatus, departmentId, locationId));
+    public ApiResponse<PageResponse<Map<String, Object>>> page(@RequestParam(defaultValue = "1") int pageNo,
+                                                               @RequestParam(defaultValue = "10") int pageSize,
+                                                               @RequestParam(required = false) String keyword,
+                                                               @RequestParam(required = false) String hardwareType,
+                                                               @RequestParam(required = false) String hardwareCategory,
+                                                               @RequestParam(required = false) String hardwareStatus,
+                                                               @RequestParam(required = false) Long locationId) {
+        return ApiResponse.success(hardwareAssetService.page(
+                pageNo, pageSize, keyword, hardwareType, hardwareCategory, hardwareStatus, locationId));
     }
 
-    /**
-     * 查询可用于下拉选择的资源列表。
-     */
     @Operation(summary = "查询硬件资产下拉选项")
     @GetMapping("/options")
     public ApiResponse<List<AssetHardware>> options() {
         return ApiResponse.success(hardwareAssetService.options());
     }
 
-    /**
-     * 同步硬件与信息系统之间的关联关系。
-     */
+    @Operation(summary = "同步硬件关联关系")
+    @PutMapping("/{id}/relations")
+    public ApiResponse<Void> syncRelations(@PathVariable Long id, @RequestBody HardwareAssetRelationRequest request) {
+        hardwareAssetService.syncRelations(id, request);
+        return ApiResponse.success("Relations synchronized", null);
+    }
+
     @Operation(summary = "同步硬件关联系统")
     @PutMapping("/{id}/systems")
     public ApiResponse<Void> syncSystems(@PathVariable Long id, @Validated @RequestBody IdListRequest request) {
@@ -101,9 +99,6 @@ public class HardwareAssetController {
         return ApiResponse.success("Systems synchronized", null);
     }
 
-    /**
-     * 同步硬件负责人的关联关系。
-     */
     @Operation(summary = "同步硬件负责人")
     @PutMapping("/{id}/owners")
     public ApiResponse<Void> syncOwners(@PathVariable Long id, @Validated @RequestBody IdListRequest request) {
@@ -111,9 +106,6 @@ public class HardwareAssetController {
         return ApiResponse.success("Owners synchronized", null);
     }
 
-    /**
-     * 同步硬件与服务商之间的关联关系。
-     */
     @Operation(summary = "同步硬件服务商")
     @PutMapping("/{id}/vendors")
     public ApiResponse<Void> syncVendors(@PathVariable Long id, @Validated @RequestBody IdListRequest request) {
@@ -121,27 +113,18 @@ public class HardwareAssetController {
         return ApiResponse.success("Vendors synchronized", null);
     }
 
-    /**
-     * 执行硬件生命周期流转动作。
-     */
     @Operation(summary = "执行硬件生命周期动作")
     @PostMapping("/{id}/lifecycle")
-    public ApiResponse<AssetHardware> executeLifecycle(@PathVariable Long id, @Validated @RequestBody HardwareLifecycleRequest request) {
+    public ApiResponse<Map<String, Object>> executeLifecycle(@PathVariable Long id, @Validated @RequestBody HardwareLifecycleRequest request) {
         return ApiResponse.success(hardwareAssetService.executeLifecycle(id, request));
     }
 
-    /**
-     * 批量导入硬件资产。
-     */
     @Operation(summary = "批量导入硬件资产")
     @PostMapping("/import")
-    public ApiResponse<List<AssetHardware>> batchImport(@Validated @RequestBody HardwareBatchImportRequest request) {
+    public ApiResponse<List<Map<String, Object>>> batchImport(@Validated @RequestBody HardwareBatchImportRequest request) {
         return ApiResponse.success(hardwareAssetService.batchImport(request));
     }
 
-    /**
-     * 导出硬件资产列表文件。
-     */
     @Operation(summary = "导出硬件资产")
     @GetMapping("/export")
     public ResponseEntity<byte[]> export() {
@@ -152,9 +135,6 @@ public class HardwareAssetController {
                 .body(content);
     }
 
-    /**
-     * 删除指定主键对应的资源记录。
-     */
     @Operation(summary = "删除硬件资产")
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
@@ -162,5 +142,3 @@ public class HardwareAssetController {
         return ApiResponse.success("Deleted", null);
     }
 }
-
-

@@ -42,6 +42,30 @@ public class InformationSystem extends BaseEntity {
     private String systemType;
 
     /**
+     * 版本号。
+     */
+    @Schema(description = "版本号")
+    private String versionNo;
+
+    /**
+     * 部署架构。
+     */
+    @Schema(description = "部署架构")
+    private String deploymentArchitecture;
+
+    /**
+     * 负责人主键。
+     */
+    @Schema(description = "负责人主键")
+    private Long ownerPersonId;
+
+    /**
+     * 联系电话。
+     */
+    @Schema(description = "联系电话")
+    private String contactPhone;
+
+    /**
      * 状态。
      */
     @Schema(description = "状态")

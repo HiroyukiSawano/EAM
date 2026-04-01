@@ -5,6 +5,7 @@ import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.domain.entity.InformationSystem;
 import com.eam.assetcenter.service.InformationSystemService;
 import com.eam.assetcenter.web.request.InformationSystemRelationRequest;
+import com.eam.assetcenter.web.request.InformationSystemUpsertRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -38,8 +39,8 @@ public class InformationSystemController {
      */
     @Operation(summary = "新增信息系统")
     @PostMapping
-    public ApiResponse<InformationSystem> create(@Validated @RequestBody InformationSystem informationSystem) {
-        return ApiResponse.success(informationSystemService.create(informationSystem));
+    public ApiResponse<Map<String, Object>> create(@Validated @RequestBody InformationSystemUpsertRequest request) {
+        return ApiResponse.success(informationSystemService.create(request));
     }
 
     /**
@@ -47,8 +48,17 @@ public class InformationSystemController {
      */
     @Operation(summary = "更新信息系统")
     @PutMapping("/{id}")
-    public ApiResponse<InformationSystem> update(@PathVariable Long id, @Validated @RequestBody InformationSystem informationSystem) {
-        return ApiResponse.success(informationSystemService.update(id, informationSystem));
+    public ApiResponse<Map<String, Object>> update(@PathVariable Long id, @Validated @RequestBody InformationSystemUpsertRequest request) {
+        return ApiResponse.success(informationSystemService.update(id, request));
+    }
+
+    /**
+     * 查询信息系统统计。
+     */
+    @Operation(summary = "查询信息系统统计")
+    @GetMapping("/stats")
+    public ApiResponse<Map<String, Object>> stats() {
+        return ApiResponse.success(informationSystemService.stats());
     }
 
     /**
@@ -65,11 +75,11 @@ public class InformationSystemController {
      */
     @Operation(summary = "分页查询信息系统")
     @GetMapping
-    public ApiResponse<PageResponse<InformationSystem>> page(@RequestParam(defaultValue = "1") int pageNo,
-                                                             @RequestParam(defaultValue = "10") int pageSize,
-                                                             @RequestParam(required = false) String keyword,
-                                                             @RequestParam(required = false) String systemType,
-                                                             @RequestParam(required = false) String status) {
+    public ApiResponse<PageResponse<Map<String, Object>>> page(@RequestParam(defaultValue = "1") int pageNo,
+                                                               @RequestParam(defaultValue = "10") int pageSize,
+                                                               @RequestParam(required = false) String keyword,
+                                                               @RequestParam(required = false) String systemType,
+                                                               @RequestParam(required = false) String status) {
         return ApiResponse.success(informationSystemService.page(pageNo, pageSize, keyword, systemType, status));
     }
 

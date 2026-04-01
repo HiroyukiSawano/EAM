@@ -4,13 +4,9 @@ package com.eam.assetcenter.common.enums;
  * 硬件资产状态枚举。
  */
 public enum HardwareStatus implements StatusDictionaryEnum {
-    REGISTERED("已登记", "Registered", "info"),
-    IN_STOCK("已入库", "In Stock", "info"),
-    ASSIGNED("已分配", "Assigned", "success"),
-    CHANGED("已变更", "Changed", "info"),
-    IDLE("闲置", "Idle", "info"),
-    MAINTAINING("维护中", "Maintaining", "warning"),
-    OFFLINE("已下线", "Offline", "danger"),
+    RUNNING("正常运行", "Running", "success"),
+    MAINTENANCE("故障维修", "Maintenance", "warning"),
+    IDLE("闲置停用", "Idle", "info"),
     SCRAPPED("已报废", "Scrapped", "danger");
 
     private final String label;
