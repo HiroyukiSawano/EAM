@@ -20,6 +20,7 @@
         <java.version>1.8</java.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <flyway.version>9.22.3</flyway.version>
+        <frontend.dist.dir>${project.basedir}/../dg_admin_web_next/dist</frontend.dist.dir>
     </properties>
 
     <dependencies>
@@ -102,6 +103,28 @@
                     <source>${java.version}</source>
                     <target>${java.version}</target>
                 </configuration>
+            </plugin>
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-frontend-dist</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <overwrite>true</overwrite>
+                            <resources>
+                                <resource>
+                                    <directory>${frontend.dist.dir}</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

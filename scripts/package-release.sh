@@ -3,12 +3,30 @@
 set -eu
 
 APP_HOME="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+FRONTEND_HOME="$(CDPATH= cd -- "$APP_HOME/../dg_admin_web_next" && pwd)"
 RELEASE_DIR="$APP_HOME/release/eam-backend"
+MAVEN_REPO_LOCAL="${MAVEN_REPO_LOCAL:-}"
+MAVEN_SETTINGS_FILE="${MAVEN_SETTINGS_FILE:-}"
 
 cd "$APP_HOME"
 
+if [ -z "$MAVEN_REPO_LOCAL" ]; then
+  MAVEN_REPO_LOCAL="$HOME/.m2/repository"
+fi
+
+mkdir -p "$MAVEN_REPO_LOCAL"
+
 if [ "${SKIP_BUILD:-false}" != "true" ]; then
-  mvn clean package -DskipTests
+  (
+    cd "$FRONTEND_HOME"
+    npm run build
+  )
+
+  if [ -n "$MAVEN_SETTINGS_FILE" ]; then
+    mvn -gs "$MAVEN_SETTINGS_FILE" clean package -DskipTests "-Dmaven.repo.local=$MAVEN_REPO_LOCAL"
+  else
+    mvn clean package -DskipTests "-Dmaven.repo.local=$MAVEN_REPO_LOCAL"
+  fi
 fi
 
 rm -rf "$RELEASE_DIR"
@@ -17,7 +35,7 @@ mkdir -p "$RELEASE_DIR/config" "$RELEASE_DIR/scripts" "$RELEASE_DIR/sql/migratio
 JAR_FILE="$(find "$APP_HOME/target" -maxdepth 1 -type f -name '*.jar' ! -name '*.original' | head -n 1)"
 
 if [ -z "$JAR_FILE" ]; then
-  echo "未找到可发布的 JAR 文件"
+  echo "No publishable JAR file was found."
   exit 1
 fi
 
@@ -34,4 +52,10 @@ cp "$APP_HOME/deploy/windows/install-service.ps1" "$RELEASE_DIR/windows/install-
 
 chmod +x "$RELEASE_DIR/scripts/start.sh" "$RELEASE_DIR/scripts/stop.sh"
 
-echo "后端发布包已生成：$RELEASE_DIR"
+echo "Backend release package created: $RELEASE_DIR"
+echo "Maven local repository: $MAVEN_REPO_LOCAL"
+if [ -n "$MAVEN_SETTINGS_FILE" ]; then
+  echo "Maven settings file: $MAVEN_SETTINGS_FILE"
+else
+  echo "Maven settings file: using default system settings.xml"
+fi
