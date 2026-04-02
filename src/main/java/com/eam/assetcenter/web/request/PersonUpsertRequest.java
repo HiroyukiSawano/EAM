@@ -99,8 +99,8 @@ public class PersonUpsertRequest {
     private List<Long> hardwareAssetIds;
 
     /**
-     * 关联服务商主键列表。
+     * 兼容保留字段，人员单运营商规则下禁止写入。
      */
-    @Schema(description = "关联服务商主键列表")
+    @Schema(description = "关联服务商主键列表（兼容保留，当前禁止写入）")
     private List<Long> relatedServiceProviderIds;
 }

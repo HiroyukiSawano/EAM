@@ -75,7 +75,7 @@ public class PersonService {
         validateRequest(request, null);
         Person person = toEntity(request, null);
         personMapper.insert(person);
-        syncFormRelations(person.getId(), person.getServiceProviderId(), request, true);
+        syncFormRelations(person.getId(), request, true);
         auditService.record("PERSON", person.getId(), AuditActionType.CREATE, "Created person " + person.getName(), "SYSTEM");
         return toPersonView(getById(person.getId()));
     }
@@ -90,7 +90,7 @@ public class PersonService {
         Person person = toEntity(request, existing);
         person.setId(id);
         personMapper.updateById(person);
-        syncFormRelations(id, resolvePrimaryServiceProviderId(request, existing), request, false);
+        syncFormRelations(id, request, false);
         auditService.record("PERSON", id, AuditActionType.UPDATE, "Updated person " + person.getName(), "SYSTEM");
         return toPersonView(getById(id));
     }
@@ -120,14 +120,13 @@ public class PersonService {
         List<Long> projectIds = projectPersonRelMapper.selectList(
                         Wrappers.<ProjectPersonRel>lambdaQuery().eq(ProjectPersonRel::getPersonId, id))
                 .stream().map(ProjectPersonRel::getProjectId).collect(Collectors.toList());
-        List<Long> relatedServiceProviderIds = loadRelatedServiceProviderIds(id, person.getServiceProviderId());
 
         Map<String, Object> detail = new LinkedHashMap<String, Object>();
         detail.put("person", toPersonView(person));
         detail.put("hardwareAssetIds", hardwareAssetIds);
         detail.put("informationSystemIds", informationSystemIds);
         detail.put("projectIds", projectIds);
-        detail.put("relatedServiceProviderIds", relatedServiceProviderIds);
+        detail.put("relatedServiceProviderIds", Collections.emptyList());
         detail.put("informationSystems", buildInformationSystemSummaries(informationSystemIds));
         detail.put("hardwareAssets", buildHardwareAssetSummaries(hardwareAssetIds));
         detail.put("projects", buildProjectSummaries(projectIds));
@@ -189,12 +188,11 @@ public class PersonService {
      */
     @Transactional(rollbackFor = Exception.class)
     public void syncRelations(Long id, PersonRelationRequest request) {
-        Person person = getById(id);
+        getById(id);
+        ensureRelatedServiceProvidersDisabled(request.getRelatedServiceProviderIds());
         List<Long> hardwareAssetIds = normalizeIds(request.getHardwareAssetIds());
         List<Long> informationSystemIds = normalizeIds(request.getInformationSystemIds());
         List<Long> projectIds = normalizeIds(request.getProjectIds());
-        List<Long> relatedServiceProviderIds = validateRelatedServiceProviderIds(
-                request.getRelatedServiceProviderIds(), person.getServiceProviderId());
 
         for (Long hardwareAssetId : hardwareAssetIds) {
             supportService.ensureHardwareExists(hardwareAssetId);
@@ -237,7 +235,7 @@ public class PersonService {
             projectPersonRelMapper.insert(relation);
         }
 
-        syncRelatedServiceProviderRelations(id, relatedServiceProviderIds);
+        clearRelatedServiceProviderRelations(id);
 
         auditService.record("PERSON", id, AuditActionType.RELATION_SYNC, "Synchronized person relations", "SYSTEM");
     }
@@ -270,13 +268,13 @@ public class PersonService {
     }
 
     private void validateRequest(PersonUpsertRequest request, Person existing) {
+        ensureRelatedServiceProvidersDisabled(request.getRelatedServiceProviderIds());
         supportService.ensureDepartmentExists(request.getDepartmentId());
         supportService.ensureServiceProviderExists(request.getServiceProviderId());
         supportService.ensureCommonStatusValid(resolveStatus(request, existing), "人员");
         supportService.ensurePersonTypeValid(request.getPersonType());
         validateHardwareAssetIds(request.getHardwareAssetIds());
         validateInformationSystemIds(request.getInformationSystemIds());
-        validateRelatedServiceProviderIds(request.getRelatedServiceProviderIds(), resolvePrimaryServiceProviderId(request, existing));
     }
 
     private Person toEntity(PersonUpsertRequest request, Person existing) {
@@ -373,27 +371,21 @@ public class PersonService {
         return normalizedIds;
     }
 
-    private List<Long> validateRelatedServiceProviderIds(List<Long> relatedServiceProviderIds, Long primaryServiceProviderId) {
-        List<Long> normalizedIds = normalizeIds(relatedServiceProviderIds).stream()
-                .filter(item -> primaryServiceProviderId == null || !primaryServiceProviderId.equals(item))
-                .collect(Collectors.toList());
-        for (Long serviceProviderId : normalizedIds) {
-            supportService.ensureServiceProviderExists(serviceProviderId);
+    private void ensureRelatedServiceProvidersDisabled(List<Long> relatedServiceProviderIds) {
+        if (normalizeIds(relatedServiceProviderIds).isEmpty()) {
+            return;
         }
-        return normalizedIds;
+        throw new BusinessException("人员只能归属一个服务商，不允许再关联其他服务商");
     }
 
-    private void syncFormRelations(Long personId, Long primaryServiceProviderId, PersonUpsertRequest request, boolean createMode) {
+    private void syncFormRelations(Long personId, PersonUpsertRequest request, boolean createMode) {
         if (createMode || request.getHardwareAssetIds() != null) {
             syncHardwareRelations(personId, validateHardwareAssetIds(request.getHardwareAssetIds()));
         }
         if (createMode || request.getInformationSystemIds() != null) {
             syncInformationSystemRelations(personId, validateInformationSystemIds(request.getInformationSystemIds()));
         }
-        if (createMode || request.getRelatedServiceProviderIds() != null) {
-            syncRelatedServiceProviderRelations(personId,
-                    validateRelatedServiceProviderIds(request.getRelatedServiceProviderIds(), primaryServiceProviderId));
-        }
+        clearRelatedServiceProviderRelations(personId);
     }
 
     private void syncHardwareRelations(Long personId, List<Long> hardwareAssetIds) {
@@ -421,28 +413,9 @@ public class PersonService {
         }
     }
 
-    private void syncRelatedServiceProviderRelations(Long personId, List<Long> relatedServiceProviderIds) {
+    private void clearRelatedServiceProviderRelations(Long personId) {
         serviceProviderPersonRelMapper.delete(Wrappers.<ServiceProviderPersonRel>lambdaQuery()
                 .eq(ServiceProviderPersonRel::getPersonId, personId));
-        for (Long serviceProviderId : relatedServiceProviderIds) {
-            ServiceProviderPersonRel relation = new ServiceProviderPersonRel();
-            relation.setServiceProviderId(serviceProviderId);
-            relation.setPersonId(personId);
-            serviceProviderPersonRelMapper.insert(relation);
-        }
-    }
-
-    private List<Long> loadRelatedServiceProviderIds(Long personId, Long primaryServiceProviderId) {
-        return serviceProviderPersonRelMapper.selectList(
-                        Wrappers.<ServiceProviderPersonRel>lambdaQuery()
-                                .eq(ServiceProviderPersonRel::getPersonId, personId)
-                                .orderByAsc(ServiceProviderPersonRel::getCreatedAt)
-                                .orderByAsc(ServiceProviderPersonRel::getId))
-                .stream()
-                .map(ServiceProviderPersonRel::getServiceProviderId)
-                .filter(item -> item != null && (primaryServiceProviderId == null || !primaryServiceProviderId.equals(item)))
-                .distinct()
-                .collect(Collectors.toList());
     }
 
     private List<Map<String, Object>> buildInformationSystemSummaries(List<Long> informationSystemIds) {
@@ -586,11 +559,6 @@ public class PersonService {
                     return summary;
                 })
                 .collect(Collectors.toList());
-    }
-
-    private Long resolvePrimaryServiceProviderId(PersonUpsertRequest request, Person existing) {
-        return request.getServiceProviderId() != null ? request.getServiceProviderId()
-                : existing == null ? null : existing.getServiceProviderId();
     }
 
     private Boolean resolveHasOpsAccount(PersonUpsertRequest request, Person existing) {

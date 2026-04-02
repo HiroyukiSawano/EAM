@@ -1,5 +1,8 @@
 package com.eam.assetcenter;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.eam.assetcenter.domain.entity.ServiceProviderPersonRel;
+import com.eam.assetcenter.infrastructure.mapper.ServiceProviderPersonRelMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,9 @@ class AssetCenterApiSmokeTests {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ServiceProviderPersonRelMapper serviceProviderPersonRelMapper;
 
     @Test
     void organizationSupportOptionsShouldWork() throws Exception {
@@ -209,6 +215,72 @@ class AssetCenterApiSmokeTests {
         JsonNode personDetail = getDataNode(performGet("/api/v1/persons/" + personId));
         assertTrue(arrayContainsId(personDetail.path("hardwareAssetIds"), hardwareId));
         assertTrue(arrayContainsId(personDetail.path("informationSystemIds"), informationSystemId));
+    }
+
+    @Test
+    void personShouldRejectRelatedServiceProvidersAcrossEntryPoints() throws Exception {
+        String suffix = uniqueSuffix("PERSON-SP");
+        long departmentId = createDepartment(suffix);
+        long primaryServiceProviderId = createServiceProvider(suffix + "-PRIMARY");
+        long relatedServiceProviderId = createServiceProvider(suffix + "-RELATED");
+
+        Map<String, Object> createPayload = createPersonPayload(suffix, departmentId, "ACTIVE");
+        createPayload.put("serviceProviderId", primaryServiceProviderId);
+        createPayload.put("personType", "OPS");
+        createPayload.put("relatedServiceProviderIds", new long[]{relatedServiceProviderId});
+        JsonNode createRoot = readRoot(performPostExpectFailure("/api/v1/persons", createPayload));
+        assertTrue(createRoot.path("message").asText().contains("只能归属一个服务商"));
+
+        Map<String, Object> validPayload = createPersonPayload(suffix + "-VALID", departmentId, "ACTIVE");
+        validPayload.put("serviceProviderId", primaryServiceProviderId);
+        validPayload.put("personType", "OPS");
+        long personId = asLong(getDataNode(performPost("/api/v1/persons", validPayload)).path("id"));
+
+        Map<String, Object> updatePayload = createPersonPayload(suffix + "-EDIT", departmentId, "ACTIVE");
+        updatePayload.put("serviceProviderId", primaryServiceProviderId);
+        updatePayload.put("personType", "DEV");
+        updatePayload.put("relatedServiceProviderIds", new long[]{relatedServiceProviderId});
+        JsonNode updateRoot = readRoot(performPutExpectFailure("/api/v1/persons/" + personId, updatePayload));
+        assertTrue(updateRoot.path("message").asText().contains("只能归属一个服务商"));
+
+        Map<String, Object> relationPayload = new LinkedHashMap<String, Object>();
+        relationPayload.put("hardwareAssetIds", new long[0]);
+        relationPayload.put("informationSystemIds", new long[0]);
+        relationPayload.put("projectIds", new long[0]);
+        relationPayload.put("relatedServiceProviderIds", new long[]{relatedServiceProviderId});
+        JsonNode relationRoot = readRoot(performPutExpectFailure("/api/v1/persons/" + personId + "/relations", relationPayload));
+        assertTrue(relationRoot.path("message").asText().contains("只能归属一个服务商"));
+    }
+
+    @Test
+    void personSaveShouldClearLegacyRelatedServiceProviderRecords() throws Exception {
+        String suffix = uniqueSuffix("PERSON-CLEAN");
+        long departmentId = createDepartment(suffix);
+        long primaryServiceProviderId = createServiceProvider(suffix + "-PRIMARY");
+        long legacyRelatedServiceProviderId = createServiceProvider(suffix + "-LEGACY");
+
+        Map<String, Object> createPayload = createPersonPayload(suffix, departmentId, "ACTIVE");
+        createPayload.put("serviceProviderId", primaryServiceProviderId);
+        createPayload.put("personType", "OPS");
+        long personId = asLong(getDataNode(performPost("/api/v1/persons", createPayload)).path("id"));
+
+        ServiceProviderPersonRel legacyRelation = new ServiceProviderPersonRel();
+        legacyRelation.setPersonId(personId);
+        legacyRelation.setServiceProviderId(legacyRelatedServiceProviderId);
+        serviceProviderPersonRelMapper.insert(legacyRelation);
+        assertEquals(1L, serviceProviderPersonRelMapper.selectCount(
+                Wrappers.<ServiceProviderPersonRel>lambdaQuery().eq(ServiceProviderPersonRel::getPersonId, personId)).longValue());
+
+        Map<String, Object> updatePayload = createPersonPayload(suffix + "-EDIT", departmentId, "ACTIVE");
+        updatePayload.put("serviceProviderId", primaryServiceProviderId);
+        updatePayload.put("personType", "DEV");
+        getDataNode(performPut("/api/v1/persons/" + personId, updatePayload));
+
+        assertEquals(0L, serviceProviderPersonRelMapper.selectCount(
+                Wrappers.<ServiceProviderPersonRel>lambdaQuery().eq(ServiceProviderPersonRel::getPersonId, personId)).longValue());
+
+        JsonNode personDetail = getDataNode(performGet("/api/v1/persons/" + personId));
+        assertEquals(0, personDetail.path("relatedServiceProviderIds").size());
     }
 
     @Test
