@@ -134,8 +134,10 @@ public class InformationSystemService {
     /**
      * 按条件分页查询软件资源。
      */
-    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, String systemType, String status) {
+    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, String systemType,
+                                                  String deploymentArchitecture, String status) {
         supportService.ensureSystemTypeValid(systemType);
+        supportService.ensureDeploymentArchitectureValid(deploymentArchitecture);
         if (StringUtils.hasText(status)) {
             supportService.ensureCommonStatusValid(status, "软件资源");
         }
@@ -144,6 +146,7 @@ public class InformationSystemService {
                 .and(StringUtils.hasText(keyword),
                         query -> query.like(InformationSystem::getCode, keyword).or().like(InformationSystem::getName, keyword))
                 .eq(StringUtils.hasText(systemType), InformationSystem::getSystemType, systemType)
+                .eq(StringUtils.hasText(deploymentArchitecture), InformationSystem::getDeploymentArchitecture, deploymentArchitecture)
                 .eq(StringUtils.hasText(status), InformationSystem::getStatus, status)
                 .orderByAsc(InformationSystem::getCode);
 

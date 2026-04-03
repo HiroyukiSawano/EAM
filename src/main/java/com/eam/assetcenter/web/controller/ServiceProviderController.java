@@ -68,8 +68,9 @@ public class ServiceProviderController {
                                                                @RequestParam(defaultValue = "10") int pageSize,
                                                                @RequestParam(required = false) String keyword,
                                                                @RequestParam(required = false) String cooperationScope,
+                                                               @RequestParam(required = false) String vendorLevel,
                                                                @RequestParam(required = false) String status) {
-        return ApiResponse.success(serviceProviderService.page(pageNo, pageSize, keyword, cooperationScope, status));
+        return ApiResponse.success(serviceProviderService.page(pageNo, pageSize, keyword, cooperationScope, vendorLevel, status));
     }
 
     /**

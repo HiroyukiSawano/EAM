@@ -79,8 +79,9 @@ public class InformationSystemController {
                                                                @RequestParam(defaultValue = "10") int pageSize,
                                                                @RequestParam(required = false) String keyword,
                                                                @RequestParam(required = false) String systemType,
+                                                               @RequestParam(required = false) String deploymentArchitecture,
                                                                @RequestParam(required = false) String status) {
-        return ApiResponse.success(informationSystemService.page(pageNo, pageSize, keyword, systemType, status));
+        return ApiResponse.success(informationSystemService.page(pageNo, pageSize, keyword, systemType, deploymentArchitecture, status));
     }
 
     /**

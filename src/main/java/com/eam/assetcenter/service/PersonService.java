@@ -136,11 +136,13 @@ public class PersonService {
     /**
      * 分页查询人员。
      */
-    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, Long serviceProviderId, String personType, String status) {
+    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, Long serviceProviderId,
+                                                  Long departmentId, String personType, String status) {
         if (status != null && !status.trim().isEmpty()) {
             supportService.ensureCommonStatusValid(status, "人员");
         }
         supportService.ensureServiceProviderExists(serviceProviderId);
+        supportService.ensureDepartmentExists(departmentId);
         supportService.ensurePersonTypeValid(personType);
 
         LambdaQueryWrapper<Person> wrapper = new LambdaQueryWrapper<Person>()
@@ -149,6 +151,7 @@ public class PersonService {
                                 .or().like(Person::getEmployeeNo, keyword)
                                 .or().like(Person::getMobile, keyword))
                 .eq(serviceProviderId != null, Person::getServiceProviderId, serviceProviderId)
+                .eq(departmentId != null, Person::getDepartmentId, departmentId)
                 .eq(personType != null && !personType.trim().isEmpty(), Person::getPersonType, personType)
                 .eq(status != null && !status.trim().isEmpty(), Person::getStatus, status)
                 .orderByAsc(Person::getName);

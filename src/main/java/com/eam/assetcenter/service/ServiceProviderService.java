@@ -120,11 +120,13 @@ public class ServiceProviderService {
     /**
      * 按条件分页查询服务商。
      */
-    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, String cooperationScope, String status) {
+    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, String cooperationScope,
+                                                  String vendorLevel, String status) {
         if (status != null && !status.trim().isEmpty()) {
             supportService.ensureCommonStatusValid(status, "服务商");
         }
         supportService.ensureCooperationScopesValid(cooperationScope == null ? null : Collections.singletonList(cooperationScope));
+        supportService.ensureVendorLevelValid(vendorLevel);
 
         List<Long> serviceProviderIds = null;
         if (cooperationScope != null && !cooperationScope.trim().isEmpty()) {
@@ -147,6 +149,7 @@ public class ServiceProviderService {
                                 .or().like(ServiceProvider::getShortName, keyword)
                                 .or().like(ServiceProvider::getUnifiedSocialCreditCode, keyword))
                 .in(serviceProviderIds != null, ServiceProvider::getId, serviceProviderIds)
+                .eq(vendorLevel != null && !vendorLevel.trim().isEmpty(), ServiceProvider::getVendorLevel, vendorLevel)
                 .eq(status != null && !status.trim().isEmpty(), ServiceProvider::getStatus, status)
                 .orderByAsc(ServiceProvider::getCode);
 
@@ -184,7 +187,7 @@ public class ServiceProviderService {
         getById(id);
         List<Long> hardwareAssetIds = validateHardwareAssetIds(request.getHardwareAssetIds());
         List<Long> informationSystemIds = validateInformationSystemIds(request.getInformationSystemIds());
-        List<Long> personIds = validatePersonIds(request.getPersonIds());
+        List<Long> personIds = validatePersonIds(request.getPersonIds(), id);
         List<Long> projectIds = normalizeIds(request.getProjectIds());
 
         for (Long projectId : projectIds) {
@@ -254,7 +257,7 @@ public class ServiceProviderService {
         supportService.ensureScoreValid(resolveScore(request));
         validateHardwareAssetIds(request.getHardwareAssetIds());
         validateInformationSystemIds(request.getInformationSystemIds());
-        validatePersonIds(request.getPersonIds());
+        validatePersonIds(request.getPersonIds(), id);
     }
 
     private ServiceProvider toEntity(ServiceProviderUpsertRequest request) {
@@ -384,11 +387,12 @@ public class ServiceProviderService {
         return normalizedIds;
     }
 
-    private List<Long> validatePersonIds(List<Long> personIds) {
+    private List<Long> validatePersonIds(List<Long> personIds, Long currentServiceProviderId) {
         List<Long> normalizedIds = normalizeIds(personIds);
         for (Long personId : normalizedIds) {
             supportService.ensurePersonExists(personId);
         }
+        assertPersonOwnershipCompatible(currentServiceProviderId, normalizedIds);
         return normalizedIds;
     }
 
@@ -400,8 +404,49 @@ public class ServiceProviderService {
             syncInformationSystemRelations(serviceProviderId, validateInformationSystemIds(request.getInformationSystemIds()));
         }
         if (createMode || request.getPersonIds() != null) {
-            syncPersonRelations(serviceProviderId, validatePersonIds(request.getPersonIds()));
+            syncPersonRelations(serviceProviderId, validatePersonIds(request.getPersonIds(), serviceProviderId));
         }
+    }
+
+    private void assertPersonOwnershipCompatible(Long currentServiceProviderId, List<Long> personIds) {
+        if (personIds == null || personIds.isEmpty()) {
+            return;
+        }
+
+        List<Person> conflictingPersons = personMapper.selectList(
+                        Wrappers.<Person>lambdaQuery().in(Person::getId, personIds))
+                .stream()
+                .filter(item -> item.getServiceProviderId() != null
+                        && !item.getServiceProviderId().equals(currentServiceProviderId))
+                .collect(Collectors.toList());
+        if (conflictingPersons.isEmpty()) {
+            return;
+        }
+
+        Map<Long, String> providerNameMap = serviceProviderMapper.selectList(
+                        Wrappers.<ServiceProvider>lambdaQuery().in(ServiceProvider::getId, conflictingPersons.stream()
+                                .map(Person::getServiceProviderId)
+                                .collect(Collectors.toList())))
+                .stream()
+                .collect(Collectors.toMap(ServiceProvider::getId, ServiceProvider::getName));
+
+        String conflictLabels = conflictingPersons.stream()
+                .map(item -> {
+                    String personLabel = item.getName();
+                    if (personLabel == null || personLabel.trim().isEmpty()) {
+                        personLabel = String.valueOf(item.getId());
+                    }
+                    if (item.getEmployeeNo() != null && !item.getEmployeeNo().trim().isEmpty()) {
+                        personLabel = personLabel + "/" + item.getEmployeeNo();
+                    }
+                    String providerLabel = providerNameMap.get(item.getServiceProviderId());
+                    if (providerLabel != null && !providerLabel.trim().isEmpty()) {
+                        personLabel = personLabel + "（" + providerLabel + "）";
+                    }
+                    return personLabel;
+                })
+                .collect(Collectors.joining("、"));
+        throw new BusinessException("所选人员已归属其他服务商，不能重复关联：" + conflictLabels);
     }
 
     private void syncHardwareRelations(Long serviceProviderId, List<Long> hardwareAssetIds) {

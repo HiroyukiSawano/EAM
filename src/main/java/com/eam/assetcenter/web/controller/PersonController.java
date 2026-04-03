@@ -68,9 +68,10 @@ public class PersonController {
                                                                @RequestParam(defaultValue = "10") int pageSize,
                                                                @RequestParam(required = false) String keyword,
                                                                @RequestParam(required = false) Long serviceProviderId,
+                                                               @RequestParam(required = false) Long departmentId,
                                                                @RequestParam(required = false) String personType,
                                                                @RequestParam(required = false) String status) {
-        return ApiResponse.success(personService.page(pageNo, pageSize, keyword, serviceProviderId, personType, status));
+        return ApiResponse.success(personService.page(pageNo, pageSize, keyword, serviceProviderId, departmentId, personType, status));
     }
 
     /**

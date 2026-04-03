@@ -68,8 +68,9 @@ public class ProjectController {
                                                                @RequestParam(defaultValue = "10") int pageSize,
                                                                @RequestParam(required = false) String keyword,
                                                                @RequestParam(required = false) String projectType,
-                                                               @RequestParam(required = false) String projectStatus) {
-        return ApiResponse.success(projectService.page(pageNo, pageSize, keyword, projectType, projectStatus));
+                                                               @RequestParam(required = false) String projectStatus,
+                                                               @RequestParam(required = false) String paymentStatus) {
+        return ApiResponse.success(projectService.page(pageNo, pageSize, keyword, projectType, projectStatus, paymentStatus));
     }
 
     /**

@@ -152,17 +152,20 @@ public class ProjectService {
     /**
      * 分页查询项目。
      */
-    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, String projectType, String projectStatus) {
+    public PageResponse<Map<String, Object>> page(int pageNo, int pageSize, String keyword, String projectType,
+                                                  String projectStatus, String paymentStatus) {
         supportService.ensureProjectTypeValid(projectType);
         if (StringUtils.hasText(projectStatus)) {
             supportService.ensureProjectStatusValid(projectStatus);
         }
+        supportService.ensurePaymentStatusValid(paymentStatus);
 
         LambdaQueryWrapper<ProjectInfo> wrapper = new LambdaQueryWrapper<ProjectInfo>()
                 .and(StringUtils.hasText(keyword),
                         query -> query.like(ProjectInfo::getCode, keyword).or().like(ProjectInfo::getName, keyword))
                 .eq(StringUtils.hasText(projectType), ProjectInfo::getProjectType, projectType)
                 .eq(StringUtils.hasText(projectStatus), ProjectInfo::getProjectStatus, projectStatus)
+                .eq(StringUtils.hasText(paymentStatus), ProjectInfo::getPaymentStatus, paymentStatus)
                 .orderByAsc(ProjectInfo::getCode);
 
         Page<ProjectInfo> page = projectInfoMapper.selectPage(new Page<ProjectInfo>(pageNo, pageSize), wrapper);

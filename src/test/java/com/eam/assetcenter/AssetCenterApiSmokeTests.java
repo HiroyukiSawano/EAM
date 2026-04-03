@@ -284,6 +284,114 @@ class AssetCenterApiSmokeTests {
     }
 
     @Test
+    void serviceProviderShouldRejectPersonsOwnedByOtherProvidersAcrossEntryPoints() throws Exception {
+        String suffix = uniqueSuffix("SP-PERSON");
+        long departmentId = createDepartment(suffix);
+        long ownerProviderId = createServiceProvider(suffix + "-OWNER");
+        long targetProviderId = createServiceProvider(suffix + "-TARGET");
+
+        Map<String, Object> personPayload = createPersonPayload(suffix, departmentId, "ACTIVE");
+        personPayload.put("serviceProviderId", ownerProviderId);
+        personPayload.put("personType", "OPS");
+        long ownedPersonId = asLong(getDataNode(performPost("/api/v1/persons", personPayload)).path("id"));
+
+        Map<String, Object> createPayload = createServiceProviderPayload(suffix + "-CREATE", "ACTIVE");
+        createPayload.put("personIds", new long[]{ownedPersonId});
+        JsonNode createRoot = readRoot(performPostExpectFailure("/api/v1/service-providers", createPayload));
+        assertTrue(createRoot.path("message").asText().contains("已归属其他服务商"));
+
+        Map<String, Object> updatePayload = createServiceProviderPayload(suffix + "-TARGET-EDIT", "ACTIVE");
+        updatePayload.put("personIds", new long[]{ownedPersonId});
+        JsonNode updateRoot = readRoot(performPutExpectFailure("/api/v1/service-providers/" + targetProviderId, updatePayload));
+        assertTrue(updateRoot.path("message").asText().contains("已归属其他服务商"));
+
+        Map<String, Object> relationPayload = new LinkedHashMap<String, Object>();
+        relationPayload.put("hardwareAssetIds", new long[0]);
+        relationPayload.put("informationSystemIds", new long[0]);
+        relationPayload.put("projectIds", new long[0]);
+        relationPayload.put("personIds", new long[]{ownedPersonId});
+        JsonNode relationRoot = readRoot(performPutExpectFailure("/api/v1/service-providers/" + targetProviderId + "/relations", relationPayload));
+        assertTrue(relationRoot.path("message").asText().contains("已归属其他服务商"));
+
+        JsonNode ownerPersonDetail = getDataNode(performGet("/api/v1/persons/" + ownedPersonId));
+        assertEquals(ownerProviderId, ownerPersonDetail.path("person").path("serviceProviderId").asLong());
+
+        JsonNode ownerProviderDetail = getDataNode(performGet("/api/v1/service-providers/" + ownerProviderId));
+        assertTrue(arrayContainsId(ownerProviderDetail.path("personIds"), ownedPersonId));
+
+        JsonNode targetProviderDetail = getDataNode(performGet("/api/v1/service-providers/" + targetProviderId));
+        assertTrue(!arrayContainsId(targetProviderDetail.path("personIds"), ownedPersonId));
+
+        Map<String, Object> ownerRelationPayload = new LinkedHashMap<String, Object>();
+        ownerRelationPayload.put("hardwareAssetIds", new long[0]);
+        ownerRelationPayload.put("informationSystemIds", new long[0]);
+        ownerRelationPayload.put("projectIds", new long[0]);
+        ownerRelationPayload.put("personIds", new long[]{ownedPersonId});
+        getDataNode(performPut("/api/v1/service-providers/" + ownerProviderId + "/relations", ownerRelationPayload));
+
+        JsonNode ownerProviderDetailAfterSave = getDataNode(performGet("/api/v1/service-providers/" + ownerProviderId));
+        assertTrue(arrayContainsId(ownerProviderDetailAfterSave.path("personIds"), ownedPersonId));
+    }
+
+    @Test
+    void listPagesShouldSupportNewUtilityFilters() throws Exception {
+        String suffix = uniqueSuffix("LIST-FILTER");
+        long departmentAId = createDepartment(suffix + "-A");
+        long departmentBId = createDepartment(suffix + "-B");
+        long ownerPersonId = createPerson(suffix + "-OWNER", departmentAId);
+
+        long strategicProviderId = createServiceProviderWithVendorLevel(suffix + "-SP-A", "STRATEGIC_PARTNER");
+        long generalProviderId = createServiceProviderWithVendorLevel(suffix + "-SP-B", "GENERAL_SUPPLIER");
+
+        long departmentAPersonId = createPersonWithDepartmentAndType(suffix + "-PERSON-A", departmentAId, "OPS");
+        long departmentBPersonId = createPersonWithDepartmentAndType(suffix + "-PERSON-B", departmentBId, "DEV");
+
+        long paidProjectId = createProjectWithPaymentStatus(suffix + "-PRJ-A", "PAID");
+        long pendingProjectId = createProjectWithPaymentStatus(suffix + "-PRJ-B", "PENDING");
+
+        long clusterSystemId = createInformationSystemWithArchitecture(suffix + "-SYS-A", ownerPersonId, "CLUSTER");
+        long singleSystemId = createInformationSystemWithArchitecture(suffix + "-SYS-B", ownerPersonId, "SINGLE");
+
+        JsonNode providerPage = getDataNode(performGet("/api/v1/service-providers?pageNo=1&pageSize=10&vendorLevel=STRATEGIC_PARTNER&keyword=SP-" + suffix + "-SP"));
+        assertTrue(arrayContainsId(providerPage.path("records"), strategicProviderId));
+        assertTrue(!arrayContainsId(providerPage.path("records"), generalProviderId));
+        assertTrue(providerPage.path("total").asLong() >= 1L);
+
+        JsonNode personPage = getDataNode(performGet("/api/v1/persons?pageNo=1&pageSize=10&departmentId=" + departmentAId + "&keyword=" + suffix + "-PERSON"));
+        assertTrue(arrayContainsId(personPage.path("records"), departmentAPersonId));
+        assertTrue(!arrayContainsId(personPage.path("records"), departmentBPersonId));
+        assertTrue(personPage.path("total").asLong() >= 1L);
+
+        JsonNode projectPage = getDataNode(performGet("/api/v1/projects?pageNo=1&pageSize=10&paymentStatus=PAID&keyword=PRJ-" + suffix + "-PRJ"));
+        assertTrue(arrayContainsId(projectPage.path("records"), paidProjectId));
+        assertTrue(!arrayContainsId(projectPage.path("records"), pendingProjectId));
+        assertTrue(projectPage.path("total").asLong() >= 1L);
+
+        JsonNode informationSystemPage = getDataNode(performGet("/api/v1/information-systems?pageNo=1&pageSize=10&deploymentArchitecture=CLUSTER&keyword=SYS-" + suffix + "-SYS"));
+        assertTrue(arrayContainsId(informationSystemPage.path("records"), clusterSystemId));
+        assertTrue(!arrayContainsId(informationSystemPage.path("records"), singleSystemId));
+        assertTrue(informationSystemPage.path("total").asLong() >= 1L);
+    }
+
+    @Test
+    void listPagesShouldRejectInvalidNewUtilityFilters() throws Exception {
+        String suffix = uniqueSuffix("LIST-FILTER-BAD");
+        long departmentId = createDepartment(suffix);
+
+        JsonNode providerRoot = readRoot(performGetExpectFailure("/api/v1/service-providers?pageNo=1&pageSize=10&vendorLevel=INVALID"));
+        assertTrue(providerRoot.path("message").asText().contains("服务商等级不合法"));
+
+        JsonNode personRoot = readRoot(performGetExpectFailure("/api/v1/persons?pageNo=1&pageSize=10&departmentId=" + (departmentId + 999999)));
+        assertTrue(personRoot.path("message").asText().contains("Department not found"));
+
+        JsonNode projectRoot = readRoot(performGetExpectFailure("/api/v1/projects?pageNo=1&pageSize=10&paymentStatus=INVALID"));
+        assertTrue(projectRoot.path("message").asText().contains("项目付款状态不合法"));
+
+        JsonNode informationSystemRoot = readRoot(performGetExpectFailure("/api/v1/information-systems?pageNo=1&pageSize=10&deploymentArchitecture=INVALID"));
+        assertTrue(informationSystemRoot.path("message").asText().contains("部署架构不合法"));
+    }
+
+    @Test
     void personHardwareConflictShouldFailWithoutPartialWrite() throws Exception {
         String suffix = uniqueSuffix("CONFLICT");
         long departmentId = createDepartment(suffix);
@@ -360,6 +468,12 @@ class AssetCenterApiSmokeTests {
         return asLong(getDataNode(performPost("/api/v1/service-providers", createServiceProviderPayload(suffix, status))).path("id"));
     }
 
+    private long createServiceProviderWithVendorLevel(String suffix, String vendorLevel) throws Exception {
+        Map<String, Object> payload = createServiceProviderPayload(suffix, "ACTIVE");
+        payload.put("vendorLevel", vendorLevel);
+        return asLong(getDataNode(performPost("/api/v1/service-providers", payload)).path("id"));
+    }
+
     private long createInformationSystem(String suffix) throws Exception {
         return createInformationSystem(suffix, "ACTIVE");
     }
@@ -368,8 +482,27 @@ class AssetCenterApiSmokeTests {
         return asLong(getDataNode(performPost("/api/v1/information-systems", createInformationSystemPayload(suffix, status))).path("id"));
     }
 
+    private long createInformationSystemWithArchitecture(String suffix, long ownerPersonId, String deploymentArchitecture) throws Exception {
+        Map<String, Object> payload = createInformationSystemPayload(suffix, "ACTIVE");
+        payload.put("ownerPersonId", ownerPersonId);
+        payload.put("deploymentArchitecture", deploymentArchitecture);
+        return asLong(getDataNode(performPost("/api/v1/information-systems", payload)).path("id"));
+    }
+
     private long createProject(String suffix) throws Exception {
         return asLong(getDataNode(performPost("/api/v1/projects", createProjectPayload(suffix, "PLANNING"))).path("id"));
+    }
+
+    private long createProjectWithPaymentStatus(String suffix, String paymentStatus) throws Exception {
+        Map<String, Object> payload = createProjectPayload(suffix, "PLANNING");
+        payload.put("paymentStatus", paymentStatus);
+        return asLong(getDataNode(performPost("/api/v1/projects", payload)).path("id"));
+    }
+
+    private long createPersonWithDepartmentAndType(String suffix, long departmentId, String personType) throws Exception {
+        Map<String, Object> payload = createPersonPayload(suffix, departmentId, "ACTIVE");
+        payload.put("personType", personType);
+        return asLong(getDataNode(performPost("/api/v1/persons", payload)).path("id"));
     }
 
     private long createHardwareAsset(String suffix, long departmentId, long locationId) throws Exception {
@@ -408,7 +541,7 @@ class AssetCenterApiSmokeTests {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("code", "SYS-" + suffix);
         payload.put("name", "测试系统-" + suffix);
-        payload.put("systemType", "SUPPORT_SYSTEM");
+        payload.put("systemType", "BASIC_SUPPORT");
         payload.put("status", status);
         payload.put("remark", "闭环联调用例");
         return payload;
