@@ -84,7 +84,6 @@ public class HardwareAssetService {
         validateRequest(request, null);
         AssetHardware assetHardware = toEntity(request, null);
         assetHardwareMapper.insert(assetHardware);
-        syncOwnerRelation(assetHardware, request.getOwnerPersonId(), request.getContactPhone(), true);
         auditService.record("HARDWARE_ASSET", assetHardware.getId(), AuditActionType.CREATE,
                 "Created hardware asset " + assetHardware.getAssetCode(), "SYSTEM");
         return toHardwareView(assetHardwareMapper.selectById(assetHardware.getId()));
@@ -97,7 +96,6 @@ public class HardwareAssetService {
         AssetHardware assetHardware = toEntity(request, existing);
         assetHardware.setId(id);
         assetHardwareMapper.updateById(assetHardware);
-        syncOwnerRelation(assetHardwareMapper.selectById(id), request.getOwnerPersonId(), request.getContactPhone(), true);
         auditService.record("HARDWARE_ASSET", id, AuditActionType.UPDATE,
                 "Updated hardware asset " + assetHardware.getAssetCode(), "SYSTEM");
         return toHardwareView(assetHardwareMapper.selectById(id));
@@ -132,30 +130,23 @@ public class HardwareAssetService {
         List<Long> projectIds = normalizeIds(projectHardwareRelMapper.selectList(
                         Wrappers.<ProjectHardwareRel>lambdaQuery().eq(ProjectHardwareRel::getHardwareAssetId, id))
                 .stream().map(ProjectHardwareRel::getProjectId).collect(Collectors.toList()));
-        List<AssetHardwarePersonRel> personRelations = hardwarePersonRelMapper.selectList(
+        List<Long> personIds = normalizeIds(hardwarePersonRelMapper.selectList(
                 Wrappers.<AssetHardwarePersonRel>lambdaQuery()
                         .eq(AssetHardwarePersonRel::getHardwareAssetId, id)
-                        .orderByAsc(AssetHardwarePersonRel::getRelationType)
-                        .orderByAsc(AssetHardwarePersonRel::getId));
-
-        List<Long> ownerIds = normalizeIds(personRelations.stream()
-                .filter(item -> PersonRelationType.RESPONSIBLE.name().equals(item.getRelationType()))
-                .map(AssetHardwarePersonRel::getPersonId)
-                .collect(Collectors.toList()));
-        List<Long> personIds = normalizeIds(personRelations.stream()
-                .filter(item -> PersonRelationType.USER.name().equals(item.getRelationType()))
+                        .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.USER.name())
+                        .orderByAsc(AssetHardwarePersonRel::getId))
+                .stream()
                 .map(AssetHardwarePersonRel::getPersonId)
                 .collect(Collectors.toList()));
 
         Map<String, Object> detail = new LinkedHashMap<String, Object>();
         detail.put("hardwareAsset", toHardwareView(assetHardware));
         detail.put("personIds", personIds);
-        detail.put("ownerIds", ownerIds);
         detail.put("informationSystemIds", informationSystemIds);
         detail.put("projectIds", projectIds);
         detail.put("serviceProviderIds", serviceProviderIds);
         detail.put("vendorIds", serviceProviderIds);
-        detail.put("persons", buildPersonSummaries(personRelations));
+        detail.put("persons", buildPersonSummaries(personIds));
         detail.put("softwareAssets", buildInformationSystemSummaries(informationSystemIds));
         detail.put("projects", buildProjectSummaries(projectIds));
         detail.put("serviceProviders", buildServiceProviderSummaries(serviceProviderIds));
@@ -195,12 +186,11 @@ public class HardwareAssetService {
 
     @Transactional(rollbackFor = Exception.class)
     public void syncRelations(Long id, HardwareAssetRelationRequest request) {
-        AssetHardware assetHardware = getById(id);
+        getById(id);
         syncPersonRelations(id, validatePersonIds(request.getPersonIds()));
         syncSystems(id, validateInformationSystemIds(request.getInformationSystemIds()));
         syncProjects(id, validateProjectIds(request.getProjectIds()));
         syncVendors(id, validateServiceProviderIds(request.getServiceProviderIds()));
-        syncOwnerRelation(assetHardware, assetHardware.getOwnerPersonId(), assetHardware.getContactPhone(), false);
         auditService.record("HARDWARE_ASSET", id, AuditActionType.RELATION_SYNC,
                 "Synchronized hardware relations", "SYSTEM");
     }
@@ -219,17 +209,9 @@ public class HardwareAssetService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void syncOwners(Long id, List<Long> ownerIds) {
-        AssetHardware assetHardware = getById(id);
-        List<Long> safeIds = normalizeIds(ownerIds);
-        if (safeIds.size() > 1) {
-            throw new BusinessException("Only one responsible owner is allowed");
-        }
-        Long ownerPersonId = safeIds.isEmpty() ? null : safeIds.get(0);
-        if (ownerPersonId != null) {
-            supportService.ensurePersonExists(ownerPersonId);
-        }
-        syncOwnerRelation(assetHardware, ownerPersonId, null, true);
+    public void syncOwners(Long id, List<Long> ids) {
+        getById(id);
+        throw new BusinessException("硬件资源负责人已改为手工填写，请通过编辑硬件基础信息维护");
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -266,7 +248,6 @@ public class HardwareAssetService {
 
     public String exportCsv() {
         List<AssetHardware> list = assetHardwareMapper.selectList(new LambdaQueryWrapper<AssetHardware>().orderByAsc(AssetHardware::getAssetCode));
-        Map<Long, String> ownerNameMap = loadPersonNameMap(list.stream().map(AssetHardware::getOwnerPersonId).collect(Collectors.toList()));
         StringBuilder builder = new StringBuilder();
         builder.append("assetCode,hardwareIp,assetName,hardwareBrand,hardwareType,ownerName,hardwareStatus\n");
         for (AssetHardware item : list) {
@@ -275,7 +256,7 @@ public class HardwareAssetService {
                     .append(safe(item.getAssetName())).append(',')
                     .append(safe(item.getHardwareBrand())).append(',')
                     .append(safe(item.getHardwareType())).append(',')
-                    .append(safe(ownerNameMap.get(item.getOwnerPersonId()))).append(',')
+                    .append(safe(item.getOwnerName())).append(',')
                     .append(safe(item.getHardwareStatus()))
                     .append('\n');
         }
@@ -304,7 +285,8 @@ public class HardwareAssetService {
         supportService.ensureLocationExists(request.getLocationId());
         supportService.ensureHardwareTypeValid(request.getHardwareType());
         supportService.ensureHardwareStatusValid(request.getHardwareStatus());
-        supportService.ensurePersonExists(request.getOwnerPersonId());
+        ensureRequiredText(request.getOwnerName(), "ownerName is required");
+        ensureRequiredText(request.getContactPhone(), "contactPhone is required");
     }
 
     private AssetHardware toEntity(HardwareAssetUpsertRequest request, AssetHardware existing) {
@@ -324,7 +306,8 @@ public class HardwareAssetService {
                 ? request.getHardwareStatus()
                 : existing == null ? HardwareStatus.RUNNING.name() : existing.getHardwareStatus());
         assetHardware.setPurchaseDate(request.getPurchaseDate());
-        assetHardware.setOwnerPersonId(request.getOwnerPersonId());
+        assetHardware.setOwnerPersonId(null);
+        assetHardware.setOwnerName(request.getOwnerName());
         assetHardware.setContactPhone(request.getContactPhone());
         assetHardware.setRemark(request.getRemark());
 
@@ -339,7 +322,6 @@ public class HardwareAssetService {
     }
 
     private Map<String, Object> toHardwareView(AssetHardware assetHardware) {
-        Map<Long, String> ownerNameMap = loadPersonNameMap(Collections.singletonList(assetHardware.getOwnerPersonId()));
         Map<String, Object> view = new LinkedHashMap<String, Object>();
         view.put("id", assetHardware.getId());
         view.put("assetCode", assetHardware.getAssetCode());
@@ -355,8 +337,7 @@ public class HardwareAssetService {
         view.put("operatingSystem", assetHardware.getOperatingSystem());
         view.put("hardwareStatus", assetHardware.getHardwareStatus());
         view.put("purchaseDate", assetHardware.getPurchaseDate());
-        view.put("ownerPersonId", assetHardware.getOwnerPersonId());
-        view.put("ownerName", ownerNameMap.get(assetHardware.getOwnerPersonId()));
+        view.put("ownerName", assetHardware.getOwnerName());
         view.put("contactPhone", assetHardware.getContactPhone());
         view.put("remark", assetHardware.getRemark());
         view.put("managementIp", assetHardware.getManagementIp());
@@ -368,33 +349,6 @@ public class HardwareAssetService {
         view.put("createdAt", assetHardware.getCreatedAt());
         view.put("updatedAt", assetHardware.getUpdatedAt());
         return view;
-    }
-
-    private void syncOwnerRelation(AssetHardware assetHardware, Long ownerPersonId, String contactPhone, boolean updateEntity) {
-        if (ownerPersonId != null) {
-            supportService.ensurePersonExists(ownerPersonId);
-        }
-        if (updateEntity) {
-            assetHardware.setOwnerPersonId(ownerPersonId);
-            if (StringUtils.hasText(contactPhone)) {
-                assetHardware.setContactPhone(contactPhone);
-            } else if (ownerPersonId != null) {
-                Person owner = personMapper.selectById(ownerPersonId);
-                assetHardware.setContactPhone(owner == null ? assetHardware.getContactPhone() : owner.getMobile());
-            }
-            assetHardwareMapper.updateById(assetHardware);
-        }
-        hardwarePersonRelMapper.delete(Wrappers.<AssetHardwarePersonRel>lambdaQuery()
-                .eq(AssetHardwarePersonRel::getHardwareAssetId, assetHardware.getId())
-                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name()));
-        if (ownerPersonId == null) {
-            return;
-        }
-        AssetHardwarePersonRel relation = new AssetHardwarePersonRel();
-        relation.setHardwareAssetId(assetHardware.getId());
-        relation.setPersonId(ownerPersonId);
-        relation.setRelationType(PersonRelationType.RESPONSIBLE.name());
-        hardwarePersonRelMapper.insert(relation);
     }
 
     private void syncPersonRelations(Long hardwareAssetId, List<Long> personIds) {
@@ -420,27 +374,25 @@ public class HardwareAssetService {
         }
     }
 
-    private List<Map<String, Object>> buildPersonSummaries(List<AssetHardwarePersonRel> relations) {
-        List<Long> personIds = relations.stream().map(AssetHardwarePersonRel::getPersonId).collect(Collectors.toList());
-        Map<Long, Person> personMap = personMapper.selectList(Wrappers.<Person>lambdaQuery().in(Person::getId, normalizeIds(personIds)))
-                .stream()
-                .collect(Collectors.toMap(Person::getId, item -> item));
-        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
-        for (AssetHardwarePersonRel relation : relations) {
-            Person person = personMap.get(relation.getPersonId());
-            if (person == null) {
-                continue;
-            }
-            Map<String, Object> summary = new LinkedHashMap<String, Object>();
-            summary.put("id", person.getId());
-            summary.put("name", person.getName());
-            summary.put("employeeNo", person.getEmployeeNo());
-            summary.put("mobile", person.getMobile());
-            summary.put("relationType", relation.getRelationType());
-            summary.put("relationLabel", PersonRelationType.RESPONSIBLE.name().equals(relation.getRelationType()) ? "设备负责人" : "关联人员");
-            result.add(summary);
+    private List<Map<String, Object>> buildPersonSummaries(List<Long> personIds) {
+        List<Long> normalizedIds = normalizeIds(personIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
         }
-        return result;
+        return personMapper.selectList(Wrappers.<Person>lambdaQuery().in(Person::getId, normalizedIds))
+                .stream()
+                .sorted((left, right) -> normalizedIds.indexOf(left.getId()) - normalizedIds.indexOf(right.getId()))
+                .map(item -> {
+                    Map<String, Object> summary = new LinkedHashMap<String, Object>();
+                    summary.put("id", item.getId());
+                    summary.put("name", item.getName());
+                    summary.put("employeeNo", item.getEmployeeNo());
+                    summary.put("mobile", item.getMobile());
+                    summary.put("relationType", PersonRelationType.USER.name());
+                    summary.put("relationLabel", "关联人员");
+                    return summary;
+                })
+                .collect(Collectors.toList());
     }
 
     private List<Map<String, Object>> buildInformationSystemSummaries(List<Long> informationSystemIds) {
@@ -597,6 +549,12 @@ public class HardwareAssetService {
 
     private String safe(String value) {
         return value == null ? "" : value.replace(",", " ");
+    }
+
+    private void ensureRequiredText(String value, String message) {
+        if (!StringUtils.hasText(value)) {
+            throw new BusinessException(message);
+        }
     }
 
     private String firstNonBlank(String primary, String fallback) {

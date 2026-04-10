@@ -99,7 +99,7 @@ public class HardwareAssetController {
         return ApiResponse.success("Systems synchronized", null);
     }
 
-    @Operation(summary = "同步硬件负责人")
+    @Operation(summary = "硬件负责人手工维护提示")
     @PutMapping("/{id}/owners")
     public ApiResponse<Void> syncOwners(@PathVariable Long id, @Validated @RequestBody IdListRequest request) {
         hardwareAssetService.syncOwners(id, request.getIds());

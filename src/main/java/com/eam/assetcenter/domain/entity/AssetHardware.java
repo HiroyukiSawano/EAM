@@ -97,6 +97,12 @@ public class AssetHardware extends BaseEntity {
     private Long ownerPersonId;
 
     /**
+     * 设备负责人姓名。
+     */
+    @Schema(description = "设备负责人姓名")
+    private String ownerName;
+
+    /**
      * 联系电话。
      */
     @Schema(description = "联系电话")

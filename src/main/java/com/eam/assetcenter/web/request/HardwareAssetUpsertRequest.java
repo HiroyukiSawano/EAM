@@ -89,15 +89,17 @@ public class HardwareAssetUpsertRequest {
     private LocalDate purchaseDate;
 
     /**
-     * 设备负责人主键。
+     * 设备负责人姓名。
      */
-    @Schema(description = "设备负责人主键")
-    private Long ownerPersonId;
+    @Schema(description = "设备负责人姓名")
+    @NotBlank(message = "ownerName is required")
+    private String ownerName;
 
     /**
      * 联系电话。
      */
     @Schema(description = "联系电话")
+    @NotBlank(message = "contactPhone is required")
     private String contactPhone;
 
     /**
