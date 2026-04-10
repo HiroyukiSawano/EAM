@@ -97,8 +97,7 @@ public class ProjectService {
         getById(id);
         validateRequest(request, id);
         ProjectInfo projectInfo = toEntity(request);
-        projectInfo.setId(id);
-        projectInfoMapper.updateById(projectInfo);
+        updateProject(id, projectInfo);
         syncDocuments(id, request.getDocuments());
         syncFormRelations(id, request, false);
         auditService.record("PROJECT", id, AuditActionType.UPDATE,
@@ -265,6 +264,36 @@ public class ProjectService {
         projectInfo.setPaymentStatus(request.getPaymentStatus());
         projectInfo.setRemark(request.getRemark());
         return projectInfo;
+    }
+
+    private void updateProject(Long id, ProjectInfo projectInfo) {
+        projectInfoMapper.update(
+                null,
+                Wrappers.<ProjectInfo>lambdaUpdate()
+                        .eq(ProjectInfo::getId, id)
+                        .set(ProjectInfo::getCode, projectInfo.getCode())
+                        .set(ProjectInfo::getName, projectInfo.getName())
+                        .set(ProjectInfo::getProjectType, projectInfo.getProjectType())
+                        .set(ProjectInfo::getProjectStatus, projectInfo.getProjectStatus())
+                        .set(ProjectInfo::getApprovalBatchNo, projectInfo.getApprovalBatchNo())
+                        .set(ProjectInfo::getProjectBudget, projectInfo.getProjectBudget())
+                        .set(ProjectInfo::getContractAmount, projectInfo.getContractAmount())
+                        .set(ProjectInfo::getOwnerName, projectInfo.getOwnerName())
+                        .set(ProjectInfo::getOwnerPhone, projectInfo.getOwnerPhone())
+                        .set(ProjectInfo::getApprovalDate, projectInfo.getApprovalDate())
+                        .set(ProjectInfo::getStartDate, projectInfo.getStartDate())
+                        .set(ProjectInfo::getInitialDeliveryDate, projectInfo.getInitialDeliveryDate())
+                        .set(ProjectInfo::getEndDate, projectInfo.getEndDate())
+                        .set(ProjectInfo::getWarrantyEndDate, projectInfo.getWarrantyEndDate())
+                        .set(ProjectInfo::getStage, projectInfo.getStage())
+                        .set(ProjectInfo::getPaymentCycleName, projectInfo.getPaymentCycleName())
+                        .set(ProjectInfo::getPaymentRatio, projectInfo.getPaymentRatio())
+                        .set(ProjectInfo::getPaymentAmount, projectInfo.getPaymentAmount())
+                        .set(ProjectInfo::getPlannedPaymentDate, projectInfo.getPlannedPaymentDate())
+                        .set(ProjectInfo::getActualPaymentDate, projectInfo.getActualPaymentDate())
+                        .set(ProjectInfo::getPaymentStatus, projectInfo.getPaymentStatus())
+                        .set(ProjectInfo::getRemark, projectInfo.getRemark())
+                        .set(ProjectInfo::getUpdatedAt, LocalDateTime.now()));
     }
 
     private Map<String, Object> toProjectView(ProjectInfo projectInfo) {

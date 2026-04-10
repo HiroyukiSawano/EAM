@@ -34,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -81,8 +82,7 @@ public class InformationSystemService {
         InformationSystem existing = getById(id);
         validateRequest(request, id);
         InformationSystem informationSystem = toEntity(request, existing);
-        informationSystem.setId(id);
-        informationSystemMapper.updateById(informationSystem);
+        updateInformationSystem(id, informationSystem);
         syncFormRelations(id, request, false);
         auditService.record("INFORMATION_SYSTEM", id, AuditActionType.UPDATE,
                 "Updated information system " + informationSystem.getCode(), "SYSTEM");
@@ -227,8 +227,25 @@ public class InformationSystemService {
         informationSystem.setStatus(StringUtils.hasText(request.getStatus())
                 ? request.getStatus()
                 : existing == null ? CommonStatus.ACTIVE.name() : existing.getStatus());
-        informationSystem.setRemark(request.getRemark() != null ? request.getRemark() : existing == null ? null : existing.getRemark());
+        informationSystem.setRemark(request.getRemark());
         return informationSystem;
+    }
+
+    private void updateInformationSystem(Long id, InformationSystem informationSystem) {
+        informationSystemMapper.update(
+                null,
+                Wrappers.<InformationSystem>lambdaUpdate()
+                        .eq(InformationSystem::getId, id)
+                        .set(InformationSystem::getCode, informationSystem.getCode())
+                        .set(InformationSystem::getName, informationSystem.getName())
+                        .set(InformationSystem::getSystemType, informationSystem.getSystemType())
+                        .set(InformationSystem::getVersionNo, informationSystem.getVersionNo())
+                        .set(InformationSystem::getDeploymentArchitecture, informationSystem.getDeploymentArchitecture())
+                        .set(InformationSystem::getOwnerPersonId, informationSystem.getOwnerPersonId())
+                        .set(InformationSystem::getContactPhone, informationSystem.getContactPhone())
+                        .set(InformationSystem::getStatus, informationSystem.getStatus())
+                        .set(InformationSystem::getRemark, informationSystem.getRemark())
+                        .set(InformationSystem::getUpdatedAt, LocalDateTime.now()));
     }
 
     private Map<String, Object> toInformationSystemView(InformationSystem informationSystem) {

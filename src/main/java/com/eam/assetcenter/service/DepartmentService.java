@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -50,10 +51,21 @@ public class DepartmentService {
         Department existing = getById(id);
         supportService.ensureUniqueDepartmentCode(department.getCode(), id);
         supportService.ensureCommonStatusValid(department.getStatus(), "部门");
-        department.setId(id);
-        departmentMapper.updateById(department);
+        updateDepartment(id, department);
         auditService.record("DEPARTMENT", id, AuditActionType.UPDATE, "Updated department " + existing.getCode(), "SYSTEM");
         return getById(id);
+    }
+
+    private void updateDepartment(Long id, Department department) {
+        departmentMapper.update(
+                null,
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Department>()
+                        .eq(Department::getId, id)
+                        .set(Department::getParentId, department.getParentId())
+                        .set(Department::getCode, department.getCode())
+                        .set(Department::getName, department.getName())
+                        .set(Department::getStatus, department.getStatus())
+                        .set(Department::getUpdatedAt, LocalDateTime.now()));
     }
 
     /**

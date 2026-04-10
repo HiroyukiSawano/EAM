@@ -47,6 +47,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -94,8 +95,7 @@ public class HardwareAssetService {
         AssetHardware existing = getById(id);
         validateRequest(request, id);
         AssetHardware assetHardware = toEntity(request, existing);
-        assetHardware.setId(id);
-        assetHardwareMapper.updateById(assetHardware);
+        updateHardwareAsset(id, assetHardware);
         auditService.record("HARDWARE_ASSET", id, AuditActionType.UPDATE,
                 "Updated hardware asset " + assetHardware.getAssetCode(), "SYSTEM");
         return toHardwareView(assetHardwareMapper.selectById(id));
@@ -319,6 +319,38 @@ public class HardwareAssetService {
         assetHardware.setEnabledDate(request.getEnabledDate() != null ? request.getEnabledDate() : request.getPurchaseDate());
         assetHardware.setDepartmentId(existing == null ? null : existing.getDepartmentId());
         return assetHardware;
+    }
+
+    private void updateHardwareAsset(Long id, AssetHardware assetHardware) {
+        assetHardwareMapper.update(
+                null,
+                Wrappers.<AssetHardware>lambdaUpdate()
+                        .eq(AssetHardware::getId, id)
+                        .set(AssetHardware::getAssetCode, assetHardware.getAssetCode())
+                        .set(AssetHardware::getAssetName, assetHardware.getAssetName())
+                        .set(AssetHardware::getHardwareCategory, assetHardware.getHardwareCategory())
+                        .set(AssetHardware::getHardwareIp, assetHardware.getHardwareIp())
+                        .set(AssetHardware::getHardwareModel, assetHardware.getHardwareModel())
+                        .set(AssetHardware::getHardwareBrand, assetHardware.getHardwareBrand())
+                        .set(AssetHardware::getHardwareType, assetHardware.getHardwareType())
+                        .set(AssetHardware::getPhysicalLocation, assetHardware.getPhysicalLocation())
+                        .set(AssetHardware::getNetworkEnvironment, assetHardware.getNetworkEnvironment())
+                        .set(AssetHardware::getOperatingSystem, assetHardware.getOperatingSystem())
+                        .set(AssetHardware::getPurchaseDate, assetHardware.getPurchaseDate())
+                        .set(AssetHardware::getOwnerPersonId, assetHardware.getOwnerPersonId())
+                        .set(AssetHardware::getOwnerName, assetHardware.getOwnerName())
+                        .set(AssetHardware::getContactPhone, assetHardware.getContactPhone())
+                        .set(AssetHardware::getLocationId, assetHardware.getLocationId())
+                        .set(AssetHardware::getDepartmentId, assetHardware.getDepartmentId())
+                        .set(AssetHardware::getManagementIp, assetHardware.getManagementIp())
+                        .set(AssetHardware::getBusinessIp, assetHardware.getBusinessIp())
+                        .set(AssetHardware::getCpuModel, assetHardware.getCpuModel())
+                        .set(AssetHardware::getCpuCores, assetHardware.getCpuCores())
+                        .set(AssetHardware::getMemoryGb, assetHardware.getMemoryGb())
+                        .set(AssetHardware::getHardwareStatus, assetHardware.getHardwareStatus())
+                        .set(AssetHardware::getEnabledDate, assetHardware.getEnabledDate())
+                        .set(AssetHardware::getRemark, assetHardware.getRemark())
+                        .set(AssetHardware::getUpdatedAt, LocalDateTime.now()));
     }
 
     private Map<String, Object> toHardwareView(AssetHardware assetHardware) {

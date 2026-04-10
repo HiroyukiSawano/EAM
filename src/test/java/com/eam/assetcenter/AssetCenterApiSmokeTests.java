@@ -334,6 +334,263 @@ class AssetCenterApiSmokeTests {
     }
 
     @Test
+    void serviceProviderUpdateShouldClearOptionalFieldsAndOwnedPersons() throws Exception {
+        String suffix = uniqueSuffix("SP-CLEAR");
+        long departmentId = createDepartment(suffix);
+
+        Map<String, Object> createPayload = createServiceProviderPayload(suffix, "ACTIVE");
+        createPayload.put("shortName", "简称-" + suffix);
+        createPayload.put("enterpriseNature", "PRIVATE");
+        createPayload.put("vendorLevel", "STRATEGIC_PARTNER");
+        createPayload.put("businessContact", "联系人-" + suffix);
+        createPayload.put("businessPhone", "1380000" + String.format("%04d", SEQUENCE.getAndIncrement()));
+        createPayload.put("remark", "待清空备注");
+        createPayload.put("cooperationScopes", new String[]{"SOFTWARE_DEVELOPMENT"});
+        long serviceProviderId = asLong(getDataNode(performPost("/api/v1/service-providers", createPayload)).path("id"));
+
+        Map<String, Object> personPayload = createPersonPayload(suffix, departmentId, "ACTIVE");
+        personPayload.put("serviceProviderId", serviceProviderId);
+        personPayload.put("personType", "OPS");
+        long personId = asLong(getDataNode(performPost("/api/v1/persons", personPayload)).path("id"));
+
+        Map<String, Object> updatePayload = new LinkedHashMap<String, Object>();
+        updatePayload.put("code", "SP-" + suffix);
+        updatePayload.put("name", "测试服务商-" + suffix);
+        updatePayload.put("shortName", "");
+        updatePayload.put("logoUrl", null);
+        updatePayload.put("unifiedSocialCreditCode", null);
+        updatePayload.put("cooperationScopes", new String[]{"SOFTWARE_DEVELOPMENT"});
+        updatePayload.put("enterpriseNature", null);
+        updatePayload.put("vendorLevel", null);
+        updatePayload.put("score", 5);
+        updatePayload.put("businessContact", "");
+        updatePayload.put("businessPhone", "");
+        updatePayload.put("status", "ACTIVE");
+        updatePayload.put("remark", null);
+        updatePayload.put("personIds", new long[0]);
+        updatePayload.put("informationSystemIds", new long[0]);
+        updatePayload.put("hardwareAssetIds", new long[0]);
+        getDataNode(performPut("/api/v1/service-providers/" + serviceProviderId, updatePayload));
+
+        JsonNode providerDetail = getDataNode(performGet("/api/v1/service-providers/" + serviceProviderId));
+        JsonNode provider = providerDetail.path("serviceProvider");
+        assertEquals("", provider.path("shortName").asText());
+        assertNullOrMissing(provider, "enterpriseNature");
+        assertNullOrMissing(provider, "vendorLevel");
+        assertEquals("", provider.path("businessContact").asText());
+        assertEquals("", provider.path("businessPhone").asText());
+        assertNullOrMissing(provider, "remark");
+        assertEquals(0, providerDetail.path("personIds").size());
+
+        JsonNode personDetail = getDataNode(performGet("/api/v1/persons/" + personId));
+        assertNullOrMissing(personDetail.path("person"), "serviceProviderId");
+    }
+
+    @Test
+    void personUpdateShouldClearOptionalFields() throws Exception {
+        String suffix = uniqueSuffix("PERSON-CLEAR");
+        long departmentId = createDepartment(suffix);
+        long serviceProviderId = createServiceProvider(suffix);
+
+        Map<String, Object> createPayload = createPersonPayload(suffix, departmentId, "ACTIVE");
+        createPayload.put("gender", "男");
+        createPayload.put("idCardNo", "441202199205040012");
+        createPayload.put("photoUrl", "https://example.com/avatar.png");
+        createPayload.put("account", "acct-" + suffix);
+        createPayload.put("serviceProviderId", serviceProviderId);
+        createPayload.put("personType", "OPS");
+        createPayload.put("hasOpsAccount", true);
+        long personId = asLong(getDataNode(performPost("/api/v1/persons", createPayload)).path("id"));
+
+        Map<String, Object> updatePayload = new LinkedHashMap<String, Object>();
+        updatePayload.put("name", "测试人员-" + suffix);
+        updatePayload.put("gender", null);
+        updatePayload.put("idCardNo", null);
+        updatePayload.put("mobile", null);
+        updatePayload.put("employeeNo", null);
+        updatePayload.put("photoUrl", null);
+        updatePayload.put("account", null);
+        updatePayload.put("departmentId", null);
+        updatePayload.put("serviceProviderId", null);
+        updatePayload.put("personType", null);
+        updatePayload.put("status", "ACTIVE");
+        updatePayload.put("hasOpsAccount", false);
+        updatePayload.put("informationSystemIds", new long[0]);
+        updatePayload.put("hardwareAssetIds", new long[0]);
+        updatePayload.put("relatedServiceProviderIds", new long[0]);
+        getDataNode(performPut("/api/v1/persons/" + personId, updatePayload));
+
+        JsonNode person = getDataNode(performGet("/api/v1/persons/" + personId)).path("person");
+        assertNullOrMissing(person, "gender");
+        assertNullOrMissing(person, "idCardNo");
+        assertNullOrMissing(person, "mobile");
+        assertNullOrMissing(person, "employeeNo");
+        assertNullOrMissing(person, "photoUrl");
+        assertNullOrMissing(person, "account");
+        assertNullOrMissing(person, "departmentId");
+        assertNullOrMissing(person, "serviceProviderId");
+        assertNullOrMissing(person, "personType");
+        assertTrue(!person.path("hasOpsAccount").asBoolean());
+    }
+
+    @Test
+    void informationSystemUpdateShouldClearOptionalFields() throws Exception {
+        String suffix = uniqueSuffix("SYS-CLEAR");
+        long departmentId = createDepartment(suffix);
+        long ownerPersonId = createPerson(suffix, departmentId);
+
+        Map<String, Object> createPayload = createInformationSystemPayload(suffix, "ACTIVE");
+        createPayload.put("versionNo", "v1.0.0");
+        createPayload.put("deploymentArchitecture", "CLUSTER");
+        createPayload.put("ownerPersonId", ownerPersonId);
+        createPayload.put("contactPhone", "1380000" + String.format("%04d", SEQUENCE.getAndIncrement()));
+        createPayload.put("remark", "待清空系统备注");
+        long informationSystemId = asLong(getDataNode(performPost("/api/v1/information-systems", createPayload)).path("id"));
+
+        Map<String, Object> updatePayload = new LinkedHashMap<String, Object>();
+        updatePayload.put("code", "SYS-" + suffix);
+        updatePayload.put("name", "测试系统-" + suffix);
+        updatePayload.put("systemType", "BASIC_SUPPORT");
+        updatePayload.put("versionNo", null);
+        updatePayload.put("deploymentArchitecture", null);
+        updatePayload.put("ownerPersonId", null);
+        updatePayload.put("contactPhone", null);
+        updatePayload.put("status", "ACTIVE");
+        updatePayload.put("remark", null);
+        updatePayload.put("serviceProviderIds", new long[0]);
+        updatePayload.put("personIds", new long[0]);
+        updatePayload.put("hardwareAssetIds", new long[0]);
+        getDataNode(performPut("/api/v1/information-systems/" + informationSystemId, updatePayload));
+
+        JsonNode informationSystem = getDataNode(performGet("/api/v1/information-systems/" + informationSystemId)).path("informationSystem");
+        assertNullOrMissing(informationSystem, "versionNo");
+        assertNullOrMissing(informationSystem, "deploymentArchitecture");
+        assertNullOrMissing(informationSystem, "ownerPersonId");
+        assertNullOrMissing(informationSystem, "contactPhone");
+        assertNullOrMissing(informationSystem, "remark");
+    }
+
+    @Test
+    void hardwareAssetUpdateShouldClearOptionalFields() throws Exception {
+        String suffix = uniqueSuffix("HW-CLEAR");
+        long departmentId = createDepartment(suffix);
+        long locationId = createLocation(suffix);
+
+        Map<String, Object> createPayload = createHardwareAssetPayload(suffix, departmentId, locationId);
+        createPayload.put("hardwareModel", "PowerEdge R750");
+        createPayload.put("physicalLocation", "A座机房 3排 2柜");
+        createPayload.put("networkEnvironment", "政务外网");
+        createPayload.put("operatingSystem", "CentOS 7");
+        createPayload.put("purchaseDate", "2026-03-24");
+        createPayload.put("businessIp", "172.16.0.10");
+        createPayload.put("cpuModel", "Xeon Gold");
+        createPayload.put("cpuCores", 16);
+        createPayload.put("memoryGb", 64);
+        createPayload.put("remark", "待清空硬件备注");
+        long hardwareAssetId = asLong(getDataNode(performPost("/api/v1/hardware-assets", createPayload)).path("id"));
+
+        Map<String, Object> updatePayload = createHardwareAssetPayload(suffix, departmentId, locationId);
+        updatePayload.put("hardwareModel", null);
+        updatePayload.put("physicalLocation", null);
+        updatePayload.put("networkEnvironment", null);
+        updatePayload.put("operatingSystem", null);
+        updatePayload.put("purchaseDate", null);
+        updatePayload.put("businessIp", null);
+        updatePayload.put("cpuModel", null);
+        updatePayload.put("cpuCores", null);
+        updatePayload.put("memoryGb", null);
+        updatePayload.put("remark", null);
+        getDataNode(performPut("/api/v1/hardware-assets/" + hardwareAssetId, updatePayload));
+
+        JsonNode hardwareAsset = getDataNode(performGet("/api/v1/hardware-assets/" + hardwareAssetId)).path("hardwareAsset");
+        assertNullOrMissing(hardwareAsset, "hardwareModel");
+        assertNullOrMissing(hardwareAsset, "physicalLocation");
+        assertNullOrMissing(hardwareAsset, "networkEnvironment");
+        assertNullOrMissing(hardwareAsset, "operatingSystem");
+        assertNullOrMissing(hardwareAsset, "purchaseDate");
+        assertNullOrMissing(hardwareAsset, "businessIp");
+        assertNullOrMissing(hardwareAsset, "cpuModel");
+        assertNullOrMissing(hardwareAsset, "cpuCores");
+        assertNullOrMissing(hardwareAsset, "memoryGb");
+        assertNullOrMissing(hardwareAsset, "remark");
+    }
+
+    @Test
+    void projectUpdateShouldClearOptionalFields() throws Exception {
+        String suffix = uniqueSuffix("PRJ-CLEAR");
+
+        Map<String, Object> createPayload = createProjectPayload(suffix, "PLANNING");
+        createPayload.put("approvalBatchNo", "APP-" + suffix);
+        createPayload.put("projectBudget", 120.5);
+        createPayload.put("contractAmount", 118.2);
+        createPayload.put("ownerName", "项目负责人");
+        createPayload.put("ownerPhone", "1380000" + String.format("%04d", SEQUENCE.getAndIncrement()));
+        createPayload.put("approvalDate", "2026-03-20");
+        createPayload.put("startDate", "2026-03-21");
+        createPayload.put("initialDeliveryDate", "2026-03-22");
+        createPayload.put("endDate", "2026-03-23");
+        createPayload.put("warrantyEndDate", "2027-03-23");
+        createPayload.put("stage", "实施中");
+        createPayload.put("paymentCycleName", "首付款");
+        createPayload.put("paymentRatio", 30);
+        createPayload.put("paymentAmount", 35.46);
+        createPayload.put("plannedPaymentDate", "2026-04-01");
+        createPayload.put("actualPaymentDate", "2026-04-02");
+        createPayload.put("paymentStatus", "PAID");
+        createPayload.put("remark", "待清空项目备注");
+        long projectId = asLong(getDataNode(performPost("/api/v1/projects", createPayload)).path("id"));
+
+        Map<String, Object> updatePayload = new LinkedHashMap<String, Object>();
+        updatePayload.put("code", "PRJ-" + suffix);
+        updatePayload.put("name", "测试项目-" + suffix);
+        updatePayload.put("projectType", "NEW_BUILD");
+        updatePayload.put("projectStatus", "PLANNING");
+        updatePayload.put("approvalBatchNo", null);
+        updatePayload.put("projectBudget", null);
+        updatePayload.put("contractAmount", null);
+        updatePayload.put("ownerName", null);
+        updatePayload.put("ownerPhone", null);
+        updatePayload.put("approvalDate", null);
+        updatePayload.put("startDate", null);
+        updatePayload.put("initialDeliveryDate", null);
+        updatePayload.put("endDate", null);
+        updatePayload.put("warrantyEndDate", null);
+        updatePayload.put("stage", null);
+        updatePayload.put("paymentCycleName", null);
+        updatePayload.put("paymentRatio", null);
+        updatePayload.put("paymentAmount", null);
+        updatePayload.put("plannedPaymentDate", null);
+        updatePayload.put("actualPaymentDate", null);
+        updatePayload.put("paymentStatus", null);
+        updatePayload.put("remark", null);
+        updatePayload.put("documents", new Object[0]);
+        updatePayload.put("personIds", new long[0]);
+        updatePayload.put("informationSystemIds", new long[0]);
+        updatePayload.put("hardwareAssetIds", new long[0]);
+        getDataNode(performPut("/api/v1/projects/" + projectId, updatePayload));
+
+        JsonNode project = getDataNode(performGet("/api/v1/projects/" + projectId)).path("project");
+        assertNullOrMissing(project, "approvalBatchNo");
+        assertNullOrMissing(project, "projectBudget");
+        assertNullOrMissing(project, "contractAmount");
+        assertNullOrMissing(project, "ownerName");
+        assertNullOrMissing(project, "ownerPhone");
+        assertNullOrMissing(project, "approvalDate");
+        assertNullOrMissing(project, "startDate");
+        assertNullOrMissing(project, "initialDeliveryDate");
+        assertNullOrMissing(project, "endDate");
+        assertNullOrMissing(project, "warrantyEndDate");
+        assertNullOrMissing(project, "stage");
+        assertNullOrMissing(project, "paymentCycleName");
+        assertNullOrMissing(project, "paymentRatio");
+        assertNullOrMissing(project, "paymentAmount");
+        assertNullOrMissing(project, "plannedPaymentDate");
+        assertNullOrMissing(project, "actualPaymentDate");
+        assertNullOrMissing(project, "paymentStatus");
+        assertNullOrMissing(project, "remark");
+    }
+
+    @Test
     void listPagesShouldSupportNewUtilityFilters() throws Exception {
         String suffix = uniqueSuffix("LIST-FILTER");
         long departmentAId = createDepartment(suffix + "-A");
@@ -562,6 +819,7 @@ class AssetCenterApiSmokeTests {
         payload.put("assetCode", "HW-" + suffix);
         payload.put("assetName", "测试硬件-" + suffix);
         payload.put("hardwareCategory", "SERVER");
+        payload.put("hardwareType", "SERVER");
         payload.put("departmentId", departmentId);
         payload.put("locationId", locationId);
         payload.put("managementIp", "10.0.0." + (10 + SEQUENCE.getAndIncrement()));
@@ -570,6 +828,8 @@ class AssetCenterApiSmokeTests {
         payload.put("cpuCores", 8);
         payload.put("memoryGb", 32);
         payload.put("enabledDate", "2026-03-23");
+        payload.put("ownerName", "硬件负责人-" + suffix);
+        payload.put("contactPhone", "1390000" + String.format("%04d", SEQUENCE.getAndIncrement()));
         payload.put("remark", "闭环联调用例");
         payload.put("operatingSystem", "CentOS 7");
         payload.put("diskGb", 512);
@@ -648,6 +908,12 @@ class AssetCenterApiSmokeTests {
     private JsonNode readRoot(MvcResult result) throws Exception {
         String content = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
         return objectMapper.readTree(content);
+    }
+
+    private void assertNullOrMissing(JsonNode parent, String fieldName) {
+        JsonNode fieldNode = parent.path(fieldName);
+        assertTrue(fieldNode.isNull() || fieldNode.isMissingNode(),
+                "Expected field '" + fieldName + "' to be null or missing, but was: " + fieldNode);
     }
 
     private boolean arrayContainsId(JsonNode arrayNode, long expectedId) {

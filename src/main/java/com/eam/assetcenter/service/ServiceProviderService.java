@@ -6,17 +6,24 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.common.enums.AuditActionType;
 import com.eam.assetcenter.common.enums.CooperationScope;
+import com.eam.assetcenter.common.enums.PersonType;
 import com.eam.assetcenter.common.enums.VendorLevel;
 import com.eam.assetcenter.common.exception.BusinessException;
+import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.domain.entity.AssetHardwareVendorRel;
+import com.eam.assetcenter.domain.entity.InformationSystem;
 import com.eam.assetcenter.domain.entity.Person;
+import com.eam.assetcenter.domain.entity.ProjectInfo;
 import com.eam.assetcenter.domain.entity.ProjectVendorRel;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.domain.entity.ServiceProviderCooperationScopeRel;
 import com.eam.assetcenter.domain.entity.ServiceProviderPersonRel;
 import com.eam.assetcenter.domain.entity.SystemVendorRel;
+import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
+import com.eam.assetcenter.infrastructure.mapper.InformationSystemMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
+import com.eam.assetcenter.infrastructure.mapper.ProjectInfoMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderCooperationScopeRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
@@ -28,6 +35,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -49,6 +57,9 @@ public class ServiceProviderService {
     private final AssetHardwareVendorRelMapper hardwareVendorRelMapper;
     private final SystemVendorRelMapper systemVendorRelMapper;
     private final ProjectVendorRelMapper projectVendorRelMapper;
+    private final AssetHardwareMapper assetHardwareMapper;
+    private final InformationSystemMapper informationSystemMapper;
+    private final ProjectInfoMapper projectInfoMapper;
     private final PersonMapper personMapper;
     private final AuditService auditService;
     private final SupportService supportService;
@@ -76,8 +87,7 @@ public class ServiceProviderService {
         getById(id);
         validateRequest(request, id);
         ServiceProvider serviceProvider = toEntity(request);
-        serviceProvider.setId(id);
-        serviceProviderMapper.updateById(serviceProvider);
+        updateServiceProvider(id, serviceProvider);
         syncCooperationScopes(id, resolveCooperationScopes(request));
         syncFormRelations(id, request, false);
         auditService.record("SERVICE_PROVIDER", id, AuditActionType.UPDATE,
@@ -100,20 +110,39 @@ public class ServiceProviderService {
      * 查询服务商详情。
      */
     public Map<String, Object> getDetail(Long id) {
-        Map<String, Object> detail = new LinkedHashMap<String, Object>();
-        detail.put("serviceProvider", toProviderView(getById(id)));
-        detail.put("hardwareAssetIds", hardwareVendorRelMapper.selectList(
-                        Wrappers.<AssetHardwareVendorRel>lambdaQuery().eq(AssetHardwareVendorRel::getServiceProviderId, id))
+        ServiceProvider serviceProvider = getById(id);
+        List<Long> hardwareAssetIds = normalizeIds(hardwareVendorRelMapper.selectList(
+                        Wrappers.<AssetHardwareVendorRel>lambdaQuery()
+                                .eq(AssetHardwareVendorRel::getServiceProviderId, id)
+                                .orderByAsc(AssetHardwareVendorRel::getId))
                 .stream().map(AssetHardwareVendorRel::getHardwareAssetId).collect(Collectors.toList()));
-        detail.put("informationSystemIds", systemVendorRelMapper.selectList(
-                        Wrappers.<SystemVendorRel>lambdaQuery().eq(SystemVendorRel::getServiceProviderId, id))
+        List<Long> informationSystemIds = normalizeIds(systemVendorRelMapper.selectList(
+                        Wrappers.<SystemVendorRel>lambdaQuery()
+                                .eq(SystemVendorRel::getServiceProviderId, id)
+                                .orderByAsc(SystemVendorRel::getId))
                 .stream().map(SystemVendorRel::getInformationSystemId).collect(Collectors.toList()));
-        detail.put("personIds", personMapper.selectList(
-                        Wrappers.<Person>lambdaQuery().eq(Person::getServiceProviderId, id))
-                .stream().map(Person::getId).collect(Collectors.toList()));
-        detail.put("projectIds", projectVendorRelMapper.selectList(
-                        Wrappers.<ProjectVendorRel>lambdaQuery().eq(ProjectVendorRel::getServiceProviderId, id))
+        List<Person> persons = personMapper.selectList(
+                Wrappers.<Person>lambdaQuery()
+                        .eq(Person::getServiceProviderId, id)
+                        .orderByAsc(Person::getName)
+                        .orderByAsc(Person::getId));
+        List<Long> personIds = persons.stream().map(Person::getId).collect(Collectors.toList());
+        List<Long> projectIds = normalizeIds(projectVendorRelMapper.selectList(
+                        Wrappers.<ProjectVendorRel>lambdaQuery()
+                                .eq(ProjectVendorRel::getServiceProviderId, id)
+                                .orderByAsc(ProjectVendorRel::getId))
                 .stream().map(ProjectVendorRel::getProjectId).collect(Collectors.toList()));
+
+        Map<String, Object> detail = new LinkedHashMap<String, Object>();
+        detail.put("serviceProvider", toProviderView(serviceProvider));
+        detail.put("hardwareAssetIds", hardwareAssetIds);
+        detail.put("informationSystemIds", informationSystemIds);
+        detail.put("personIds", personIds);
+        detail.put("projectIds", projectIds);
+        detail.put("persons", buildPersonSummaries(serviceProvider, persons));
+        detail.put("informationSystems", buildInformationSystemSummaries(informationSystemIds));
+        detail.put("hardwareAssets", buildHardwareAssetSummaries(hardwareAssetIds));
+        detail.put("projects", buildProjectSummaries(projectIds));
         return detail;
     }
 
@@ -277,6 +306,28 @@ public class ServiceProviderService {
         serviceProvider.setStatus(request.getStatus());
         serviceProvider.setRemark(request.getRemark());
         return serviceProvider;
+    }
+
+    private void updateServiceProvider(Long id, ServiceProvider serviceProvider) {
+        serviceProviderMapper.update(
+                null,
+                Wrappers.<ServiceProvider>lambdaUpdate()
+                        .eq(ServiceProvider::getId, id)
+                        .set(ServiceProvider::getCode, serviceProvider.getCode())
+                        .set(ServiceProvider::getName, serviceProvider.getName())
+                        .set(ServiceProvider::getShortName, serviceProvider.getShortName())
+                        .set(ServiceProvider::getLogoUrl, serviceProvider.getLogoUrl())
+                        .set(ServiceProvider::getUnifiedSocialCreditCode, serviceProvider.getUnifiedSocialCreditCode())
+                        .set(ServiceProvider::getType, serviceProvider.getType())
+                        .set(ServiceProvider::getEnterpriseNature, serviceProvider.getEnterpriseNature())
+                        .set(ServiceProvider::getVendorLevel, serviceProvider.getVendorLevel())
+                        .set(ServiceProvider::getScore, serviceProvider.getScore())
+                        .set(ServiceProvider::getRatingLevel, serviceProvider.getRatingLevel())
+                        .set(ServiceProvider::getBusinessContact, serviceProvider.getBusinessContact())
+                        .set(ServiceProvider::getBusinessPhone, serviceProvider.getBusinessPhone())
+                        .set(ServiceProvider::getStatus, serviceProvider.getStatus())
+                        .set(ServiceProvider::getRemark, serviceProvider.getRemark())
+                        .set(ServiceProvider::getUpdatedAt, LocalDateTime.now()));
     }
 
     private List<Map<String, Object>> toProviderViews(List<ServiceProvider> providers) {
@@ -478,17 +529,211 @@ public class ServiceProviderService {
             if (personIds.contains(person.getId())) {
                 continue;
             }
-            Person update = new Person();
-            update.setId(person.getId());
-            update.setServiceProviderId(null);
-            personMapper.updateById(update);
+            personMapper.update(
+                    null,
+                    Wrappers.<Person>lambdaUpdate()
+                            .eq(Person::getId, person.getId())
+                            .set(Person::getServiceProviderId, null));
         }
         for (Long personId : personIds) {
-            Person update = new Person();
-            update.setId(personId);
-            update.setServiceProviderId(serviceProviderId);
-            personMapper.updateById(update);
+            personMapper.update(
+                    null,
+                    Wrappers.<Person>lambdaUpdate()
+                            .eq(Person::getId, personId)
+                            .set(Person::getServiceProviderId, serviceProviderId));
         }
+    }
+
+    private List<Map<String, Object>> buildPersonSummaries(ServiceProvider serviceProvider, List<Person> persons) {
+        if (persons == null || persons.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return persons.stream()
+                .sorted((left, right) -> {
+                    int priorityCompare = resolvePersonPriority(serviceProvider, left) - resolvePersonPriority(serviceProvider, right);
+                    if (priorityCompare != 0) {
+                        return priorityCompare;
+                    }
+                    String leftName = left.getName() == null ? "" : left.getName();
+                    String rightName = right.getName() == null ? "" : right.getName();
+                    int nameCompare = leftName.compareTo(rightName);
+                    return nameCompare != 0 ? nameCompare : left.getId().compareTo(right.getId());
+                })
+                .map(item -> {
+                    Map<String, Object> summary = new LinkedHashMap<String, Object>();
+                    summary.put("id", item.getId());
+                    summary.put("name", item.getName());
+                    summary.put("employeeNo", item.getEmployeeNo());
+                    summary.put("mobile", item.getMobile());
+                    summary.put("photoUrl", item.getPhotoUrl());
+                    summary.put("personType", item.getPersonType());
+                    summary.put("relationLabel", resolvePersonRelationLabel(serviceProvider, item));
+                    return summary;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private List<Map<String, Object>> buildInformationSystemSummaries(List<Long> informationSystemIds) {
+        List<Long> normalizedIds = normalizeIds(informationSystemIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, InformationSystem> systemMap = informationSystemMapper.selectList(
+                        Wrappers.<InformationSystem>lambdaQuery().in(InformationSystem::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(InformationSystem::getId, item -> item));
+        Map<Long, Long> vendorIdMap = new LinkedHashMap<Long, Long>();
+        List<SystemVendorRel> vendorRelations = systemVendorRelMapper.selectList(
+                Wrappers.<SystemVendorRel>lambdaQuery()
+                        .in(SystemVendorRel::getInformationSystemId, normalizedIds)
+                        .orderByAsc(SystemVendorRel::getInformationSystemId)
+                        .orderByAsc(SystemVendorRel::getId));
+        for (SystemVendorRel relation : vendorRelations) {
+            vendorIdMap.putIfAbsent(relation.getInformationSystemId(), relation.getServiceProviderId());
+        }
+        Map<Long, String> vendorNameMap = loadServiceProviderNameMap(vendorRelations.stream()
+                .map(SystemVendorRel::getServiceProviderId)
+                .collect(Collectors.toList()));
+        Map<Long, String> ownerNameMap = loadPersonNameMap(systemMap.values().stream()
+                .map(InformationSystem::getOwnerPersonId)
+                .collect(Collectors.toList()));
+
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (Long informationSystemId : normalizedIds) {
+            InformationSystem item = systemMap.get(informationSystemId);
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("id", item.getId());
+            summary.put("code", item.getCode());
+            summary.put("name", item.getName());
+            summary.put("systemType", item.getSystemType());
+            summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
+            summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
+            result.add(summary);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> buildHardwareAssetSummaries(List<Long> hardwareAssetIds) {
+        List<Long> normalizedIds = normalizeIds(hardwareAssetIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, AssetHardware> hardwareMap = assetHardwareMapper.selectList(
+                        Wrappers.<AssetHardware>lambdaQuery().in(AssetHardware::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(AssetHardware::getId, item -> item));
+        Map<Long, Long> vendorIdMap = new LinkedHashMap<Long, Long>();
+        List<AssetHardwareVendorRel> vendorRelations = hardwareVendorRelMapper.selectList(
+                Wrappers.<AssetHardwareVendorRel>lambdaQuery()
+                        .in(AssetHardwareVendorRel::getHardwareAssetId, normalizedIds)
+                        .orderByAsc(AssetHardwareVendorRel::getHardwareAssetId)
+                        .orderByAsc(AssetHardwareVendorRel::getId));
+        for (AssetHardwareVendorRel relation : vendorRelations) {
+            vendorIdMap.putIfAbsent(relation.getHardwareAssetId(), relation.getServiceProviderId());
+        }
+        Map<Long, String> vendorNameMap = loadServiceProviderNameMap(vendorRelations.stream()
+                .map(AssetHardwareVendorRel::getServiceProviderId)
+                .collect(Collectors.toList()));
+
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (Long hardwareAssetId : normalizedIds) {
+            AssetHardware item = hardwareMap.get(hardwareAssetId);
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("id", item.getId());
+            summary.put("code", item.getAssetCode());
+            summary.put("name", item.getAssetName());
+            summary.put("hardwareCategory", item.getHardwareCategory());
+            summary.put("managementIp", item.getManagementIp());
+            summary.put("cpuModel", item.getCpuModel());
+            summary.put("memoryGb", item.getMemoryGb());
+            summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
+            summary.put("ownerName", item.getOwnerName());
+            result.add(summary);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> buildProjectSummaries(List<Long> projectIds) {
+        List<Long> normalizedIds = normalizeIds(projectIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Map<Long, ProjectInfo> projectMap = projectInfoMapper.selectList(
+                        Wrappers.<ProjectInfo>lambdaQuery().in(ProjectInfo::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(ProjectInfo::getId, item -> item));
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        for (Long projectId : normalizedIds) {
+            ProjectInfo item = projectMap.get(projectId);
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> summary = new LinkedHashMap<String, Object>();
+            summary.put("id", item.getId());
+            summary.put("code", item.getCode());
+            summary.put("name", item.getName());
+            summary.put("projectType", item.getProjectType());
+            summary.put("projectStatus", item.getProjectStatus());
+            summary.put("ownerName", item.getOwnerName());
+            result.add(summary);
+        }
+        return result;
+    }
+
+    private Map<Long, String> loadPersonNameMap(List<Long> personIds) {
+        List<Long> filteredIds = normalizeIds(personIds);
+        if (filteredIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return personMapper.selectList(Wrappers.<Person>lambdaQuery().in(Person::getId, filteredIds))
+                .stream()
+                .collect(Collectors.toMap(Person::getId, Person::getName));
+    }
+
+    private Map<Long, String> loadServiceProviderNameMap(List<Long> serviceProviderIds) {
+        List<Long> filteredIds = normalizeIds(serviceProviderIds);
+        if (filteredIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return serviceProviderMapper.selectList(Wrappers.<ServiceProvider>lambdaQuery().in(ServiceProvider::getId, filteredIds))
+                .stream()
+                .collect(Collectors.toMap(ServiceProvider::getId, ServiceProvider::getName));
+    }
+
+    private int resolvePersonPriority(ServiceProvider serviceProvider, Person person) {
+        String relationLabel = resolvePersonRelationLabel(serviceProvider, person);
+        if ("服务商负责人".equals(relationLabel)) {
+            return 0;
+        }
+        if ("服务商开发人员".equals(relationLabel)) {
+            return 1;
+        }
+        if ("服务商运维人员".equals(relationLabel)) {
+            return 2;
+        }
+        return 3;
+    }
+
+    private String resolvePersonRelationLabel(ServiceProvider serviceProvider, Person person) {
+        boolean isBusinessContact = serviceProvider != null
+                && ((serviceProvider.getBusinessContact() != null && serviceProvider.getBusinessContact().equals(person.getName()))
+                || (serviceProvider.getBusinessPhone() != null && serviceProvider.getBusinessPhone().equals(person.getMobile())));
+        if (isBusinessContact) {
+            return "服务商负责人";
+        }
+        if (PersonType.DEV.name().equals(person.getPersonType())) {
+            return "服务商开发人员";
+        }
+        if (PersonType.OPS.name().equals(person.getPersonType())) {
+            return "服务商运维人员";
+        }
+        return "关联人员";
     }
 
     private String resolveLegacyType(List<String> cooperationScopes) {

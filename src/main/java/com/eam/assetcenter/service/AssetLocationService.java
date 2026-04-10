@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -45,10 +46,24 @@ public class AssetLocationService {
     public AssetLocation update(Long id, AssetLocation assetLocation) {
         getById(id);
         supportService.ensureUniqueLocationCode(assetLocation.getCode(), id);
-        assetLocation.setId(id);
-        assetLocationMapper.updateById(assetLocation);
+        updateAssetLocation(id, assetLocation);
         auditService.record("LOCATION", id, AuditActionType.UPDATE, "Updated location " + assetLocation.getCode(), "SYSTEM");
         return getById(id);
+    }
+
+    private void updateAssetLocation(Long id, AssetLocation assetLocation) {
+        assetLocationMapper.update(
+                null,
+                new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<AssetLocation>()
+                        .eq(AssetLocation::getId, id)
+                        .set(AssetLocation::getCode, assetLocation.getCode())
+                        .set(AssetLocation::getName, assetLocation.getName())
+                        .set(AssetLocation::getSite, assetLocation.getSite())
+                        .set(AssetLocation::getBuilding, assetLocation.getBuilding())
+                        .set(AssetLocation::getFloor, assetLocation.getFloor())
+                        .set(AssetLocation::getArea, assetLocation.getArea())
+                        .set(AssetLocation::getAddressDetail, assetLocation.getAddressDetail())
+                        .set(AssetLocation::getUpdatedAt, LocalDateTime.now()));
     }
 
     /**

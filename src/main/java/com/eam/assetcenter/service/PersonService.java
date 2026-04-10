@@ -38,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,8 +89,7 @@ public class PersonService {
         Person existing = getById(id);
         validateRequest(request, existing);
         Person person = toEntity(request, existing);
-        person.setId(id);
-        personMapper.updateById(person);
+        updatePerson(id, person);
         syncFormRelations(id, request, false);
         auditService.record("PERSON", id, AuditActionType.UPDATE, "Updated person " + person.getName(), "SYSTEM");
         return toPersonView(getById(id));
@@ -295,6 +295,26 @@ public class PersonService {
         person.setHasOpsAccount(resolveHasOpsAccount(request, existing));
         person.setStatus(resolveStatus(request, existing));
         return person;
+    }
+
+    private void updatePerson(Long id, Person person) {
+        personMapper.update(
+                null,
+                Wrappers.<Person>lambdaUpdate()
+                        .eq(Person::getId, id)
+                        .set(Person::getName, person.getName())
+                        .set(Person::getGender, person.getGender())
+                        .set(Person::getIdCardNo, person.getIdCardNo())
+                        .set(Person::getMobile, person.getMobile())
+                        .set(Person::getEmployeeNo, person.getEmployeeNo())
+                        .set(Person::getPhotoUrl, person.getPhotoUrl())
+                        .set(Person::getAccount, person.getAccount())
+                        .set(Person::getDepartmentId, person.getDepartmentId())
+                        .set(Person::getServiceProviderId, person.getServiceProviderId())
+                        .set(Person::getPersonType, person.getPersonType())
+                        .set(Person::getHasOpsAccount, person.getHasOpsAccount())
+                        .set(Person::getStatus, person.getStatus())
+                        .set(Person::getUpdatedAt, LocalDateTime.now()));
     }
 
     private Map<String, Object> toPersonView(Person person) {
