@@ -565,6 +565,7 @@ public class ServiceProviderService {
                     summary.put("name", item.getName());
                     summary.put("employeeNo", item.getEmployeeNo());
                     summary.put("mobile", item.getMobile());
+                    summary.put("gender", item.getGender());
                     summary.put("photoUrl", item.getPhotoUrl());
                     summary.put("personType", item.getPersonType());
                     summary.put("relationLabel", resolvePersonRelationLabel(serviceProvider, item));

@@ -8,21 +8,7 @@ import com.eam.assetcenter.common.enums.AuditActionType;
 import com.eam.assetcenter.common.enums.HardwareStatus;
 import com.eam.assetcenter.common.enums.PersonRelationType;
 import com.eam.assetcenter.common.exception.BusinessException;
-import com.eam.assetcenter.domain.entity.AssetHardware;
-import com.eam.assetcenter.domain.entity.AssetHardwarePersonRel;
-import com.eam.assetcenter.domain.entity.AssetHardwareQueryTerminal;
-import com.eam.assetcenter.domain.entity.AssetHardwareSelfServiceTerminal;
-import com.eam.assetcenter.domain.entity.AssetHardwareServer;
-import com.eam.assetcenter.domain.entity.AssetHardwareSystemRel;
-import com.eam.assetcenter.domain.entity.AssetHardwareTicketTerminal;
-import com.eam.assetcenter.domain.entity.AssetHardwareVendorRel;
-import com.eam.assetcenter.domain.entity.AssetLifecycleRecord;
-import com.eam.assetcenter.domain.entity.InformationSystem;
-import com.eam.assetcenter.domain.entity.Person;
-import com.eam.assetcenter.domain.entity.ProjectHardwareRel;
-import com.eam.assetcenter.domain.entity.ProjectInfo;
-import com.eam.assetcenter.domain.entity.ServiceProvider;
-import com.eam.assetcenter.domain.entity.SystemVendorRel;
+import com.eam.assetcenter.domain.entity.*;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwarePersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareQueryTerminalMapper;
@@ -37,6 +23,7 @@ import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectHardwareRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectInfoMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
+import com.eam.assetcenter.infrastructure.mapper.ServiceProviderCooperationScopeRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
 import com.eam.assetcenter.web.request.HardwareAssetRelationRequest;
 import com.eam.assetcenter.web.request.HardwareAssetUpsertRequest;
@@ -77,6 +64,7 @@ public class HardwareAssetService {
     private final ProjectInfoMapper projectInfoMapper;
     private final ProjectHardwareRelMapper projectHardwareRelMapper;
     private final ServiceProviderMapper serviceProviderMapper;
+    private final ServiceProviderCooperationScopeRelMapper serviceProviderCooperationScopeRelMapper;
     private final SupportService supportService;
     private final AuditService auditService;
 
@@ -420,6 +408,7 @@ public class HardwareAssetService {
                     summary.put("name", item.getName());
                     summary.put("employeeNo", item.getEmployeeNo());
                     summary.put("mobile", item.getMobile());
+                    summary.put("gender", item.getGender());
                     summary.put("relationType", PersonRelationType.USER.name());
                     summary.put("relationLabel", "关联人员");
                     return summary;
@@ -494,6 +483,7 @@ public class HardwareAssetService {
         if (normalizedIds.isEmpty()) {
             return Collections.emptyList();
         }
+        Map<Long, List<String>> scopeMap = loadCooperationScopeMap(normalizedIds);
         Map<Long, ServiceProvider> providerMap = serviceProviderMapper.selectList(
                         Wrappers.<ServiceProvider>lambdaQuery().in(ServiceProvider::getId, normalizedIds))
                 .stream()
@@ -509,6 +499,10 @@ public class HardwareAssetService {
             summary.put("code", item.getCode());
             summary.put("name", item.getName());
             summary.put("unifiedSocialCreditCode", item.getUnifiedSocialCreditCode());
+            summary.put("logoUrl", item.getLogoUrl());
+            summary.put("vendorLevel", item.getVendorLevel());
+            summary.put("cooperationScopes", scopeMap.getOrDefault(item.getId(), Collections.<String>emptyList()));
+            summary.put("score", item.getScore());
             summary.put("businessContact", item.getBusinessContact());
             summary.put("businessPhone", item.getBusinessPhone());
             result.add(summary);
@@ -577,6 +571,28 @@ public class HardwareAssetService {
         return serviceProviderMapper.selectList(Wrappers.<ServiceProvider>lambdaQuery().in(ServiceProvider::getId, normalizedIds))
                 .stream()
                 .collect(Collectors.toMap(ServiceProvider::getId, ServiceProvider::getName));
+    }
+
+    private Map<Long, List<String>> loadCooperationScopeMap(List<Long> serviceProviderIds) {
+        List<Long> filteredIds = normalizeIds(serviceProviderIds);
+        if (filteredIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, java.util.LinkedHashSet<String>> grouped = new LinkedHashMap<Long, java.util.LinkedHashSet<String>>();
+        serviceProviderCooperationScopeRelMapper.selectList(
+                        Wrappers.<ServiceProviderCooperationScopeRel>lambdaQuery()
+                                .in(ServiceProviderCooperationScopeRel::getServiceProviderId, filteredIds)
+                                .orderByAsc(ServiceProviderCooperationScopeRel::getServiceProviderId)
+                                .orderByAsc(ServiceProviderCooperationScopeRel::getScopeCode))
+                .forEach(item -> grouped.computeIfAbsent(item.getServiceProviderId(), key -> new java.util.LinkedHashSet<String>())
+                        .add(item.getScopeCode()));
+
+        Map<Long, List<String>> result = new LinkedHashMap<Long, List<String>>();
+        for (Map.Entry<Long, java.util.LinkedHashSet<String>> entry : grouped.entrySet()) {
+            result.put(entry.getKey(), new ArrayList<String>(entry.getValue()));
+        }
+        return result;
     }
 
     private String safe(String value) {

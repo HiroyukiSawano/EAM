@@ -18,12 +18,14 @@ import com.eam.assetcenter.domain.entity.ProjectSystemRel;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.domain.entity.SystemPersonRel;
 import com.eam.assetcenter.domain.entity.SystemVendorRel;
+import com.eam.assetcenter.domain.entity.ServiceProviderCooperationScopeRel;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareSystemRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.InformationSystemMapper;
 import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectInfoMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectSystemRelMapper;
+import com.eam.assetcenter.infrastructure.mapper.ServiceProviderCooperationScopeRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemPersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
@@ -35,10 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -54,6 +53,7 @@ public class InformationSystemService {
     private final ProjectSystemRelMapper projectSystemRelMapper;
     private final AssetHardwareSystemRelMapper hardwareSystemRelMapper;
     private final ServiceProviderMapper serviceProviderMapper;
+    private final ServiceProviderCooperationScopeRelMapper serviceProviderCooperationScopeRelMapper;
     private final PersonMapper personMapper;
     private final ProjectInfoMapper projectInfoMapper;
     private final AssetHardwareMapper assetHardwareMapper;
@@ -316,6 +316,7 @@ public class InformationSystemService {
             return Collections.emptyList();
         }
 
+        Map<Long, List<String>> scopeMap = loadCooperationScopeMap(normalizedIds);
         Map<Long, ServiceProvider> providerMap = serviceProviderMapper.selectList(
                         Wrappers.<ServiceProvider>lambdaQuery().in(ServiceProvider::getId, normalizedIds))
                 .stream()
@@ -330,6 +331,10 @@ public class InformationSystemService {
                     summary.put("name", item.getName());
                     summary.put("code", item.getCode());
                     summary.put("unifiedSocialCreditCode", item.getUnifiedSocialCreditCode());
+                    summary.put("logoUrl", item.getLogoUrl());
+                    summary.put("vendorLevel", item.getVendorLevel());
+                    summary.put("cooperationScopes", scopeMap.getOrDefault(item.getId(), Collections.<String>emptyList()));
+                    summary.put("score", item.getScore());
                     summary.put("businessContact", item.getBusinessContact());
                     summary.put("businessPhone", item.getBusinessPhone());
                     return summary;
@@ -352,6 +357,7 @@ public class InformationSystemService {
                     summary.put("name", item.getName());
                     summary.put("employeeNo", item.getEmployeeNo());
                     summary.put("mobile", item.getMobile());
+                    summary.put("gender", item.getGender());
                     return summary;
                 })
                 .collect(Collectors.toList());
@@ -455,5 +461,27 @@ public class InformationSystemService {
         return personMapper.selectList(Wrappers.<Person>lambdaQuery().in(Person::getId, filteredIds))
                 .stream()
                 .collect(Collectors.toMap(Person::getId, Person::getName));
+    }
+
+    private Map<Long, List<String>> loadCooperationScopeMap(List<Long> serviceProviderIds) {
+        List<Long> filteredIds = normalizeIds(serviceProviderIds);
+        if (filteredIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, java.util.LinkedHashSet<String>> grouped = new LinkedHashMap<Long, java.util.LinkedHashSet<String>>();
+        serviceProviderCooperationScopeRelMapper.selectList(
+                        Wrappers.<ServiceProviderCooperationScopeRel>lambdaQuery()
+                                .in(ServiceProviderCooperationScopeRel::getServiceProviderId, filteredIds)
+                                .orderByAsc(ServiceProviderCooperationScopeRel::getServiceProviderId)
+                                .orderByAsc(ServiceProviderCooperationScopeRel::getScopeCode))
+                .forEach(item -> grouped.computeIfAbsent(item.getServiceProviderId(), key -> new java.util.LinkedHashSet<String>())
+                        .add(item.getScopeCode()));
+
+        Map<Long, List<String>> result = new LinkedHashMap<Long, List<String>>();
+        for (Map.Entry<Long, java.util.LinkedHashSet<String>> entry : grouped.entrySet()) {
+            result.put(entry.getKey(), new ArrayList<String>(entry.getValue()));
+        }
+        return result;
     }
 }

@@ -430,6 +430,7 @@ public class ProjectService {
                     summary.put("name", item.getName());
                     summary.put("employeeNo", item.getEmployeeNo());
                     summary.put("mobile", item.getMobile());
+                    summary.put("gender", item.getGender());
                     return summary;
                 })
                 .collect(Collectors.toList());
@@ -542,6 +543,8 @@ public class ProjectService {
                     summary.put("name", item.getName());
                     summary.put("code", item.getCode());
                     summary.put("unifiedSocialCreditCode", item.getUnifiedSocialCreditCode());
+                    summary.put("logoUrl", item.getLogoUrl());
+                    summary.put("vendorLevel", item.getVendorLevel());
                     summary.put("cooperationScopes", scopeMap.getOrDefault(item.getId(), Collections.<String>emptyList()));
                     summary.put("score", item.getScore());
                     summary.put("businessContact", item.getBusinessContact());
