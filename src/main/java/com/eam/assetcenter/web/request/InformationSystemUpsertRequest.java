@@ -54,4 +54,10 @@ public class InformationSystemUpsertRequest {
 
     @Schema(description = "关联硬件主键列表")
     private List<Long> hardwareAssetIds;
+
+    @Schema(description = "关联中间件主键列表")
+    private List<Long> middlewareIds;
+
+    @Schema(description = "关联数据库主键列表")
+    private List<Long> databaseIds;
 }

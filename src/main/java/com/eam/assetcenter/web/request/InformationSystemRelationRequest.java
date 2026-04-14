@@ -28,4 +28,16 @@ public class InformationSystemRelationRequest {
      */
     @Schema(description = "硬件主键列表")
     private List<Long> hardwareAssetIds;
+
+    /**
+     * 中间件主键列表。
+     */
+    @Schema(description = "中间件主键列表")
+    private List<Long> middlewareIds;
+
+    /**
+     * 数据库主键列表。
+     */
+    @Schema(description = "数据库主键列表")
+    private List<Long> databaseIds;
 }

@@ -11,22 +11,30 @@ import com.eam.assetcenter.common.enums.SystemType;
 import com.eam.assetcenter.common.exception.BusinessException;
 import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.domain.entity.AssetHardwareSystemRel;
+import com.eam.assetcenter.domain.entity.DatabaseResource;
 import com.eam.assetcenter.domain.entity.InformationSystem;
+import com.eam.assetcenter.domain.entity.MiddlewareResource;
 import com.eam.assetcenter.domain.entity.Person;
 import com.eam.assetcenter.domain.entity.ProjectInfo;
 import com.eam.assetcenter.domain.entity.ProjectSystemRel;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
+import com.eam.assetcenter.domain.entity.SoftwareDatabaseRel;
+import com.eam.assetcenter.domain.entity.SoftwareMiddlewareRel;
 import com.eam.assetcenter.domain.entity.SystemPersonRel;
 import com.eam.assetcenter.domain.entity.SystemVendorRel;
 import com.eam.assetcenter.domain.entity.ServiceProviderCooperationScopeRel;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareSystemRelMapper;
+import com.eam.assetcenter.infrastructure.mapper.DatabaseResourceMapper;
 import com.eam.assetcenter.infrastructure.mapper.InformationSystemMapper;
+import com.eam.assetcenter.infrastructure.mapper.MiddlewareResourceMapper;
 import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectInfoMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectSystemRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderCooperationScopeRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
+import com.eam.assetcenter.infrastructure.mapper.SoftwareDatabaseRelMapper;
+import com.eam.assetcenter.infrastructure.mapper.SoftwareMiddlewareRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemPersonRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
 import com.eam.assetcenter.web.request.InformationSystemRelationRequest;
@@ -52,11 +60,15 @@ public class InformationSystemService {
     private final SystemPersonRelMapper systemPersonRelMapper;
     private final ProjectSystemRelMapper projectSystemRelMapper;
     private final AssetHardwareSystemRelMapper hardwareSystemRelMapper;
+    private final SoftwareMiddlewareRelMapper softwareMiddlewareRelMapper;
+    private final SoftwareDatabaseRelMapper softwareDatabaseRelMapper;
     private final ServiceProviderMapper serviceProviderMapper;
     private final ServiceProviderCooperationScopeRelMapper serviceProviderCooperationScopeRelMapper;
     private final PersonMapper personMapper;
     private final ProjectInfoMapper projectInfoMapper;
     private final AssetHardwareMapper assetHardwareMapper;
+    private final MiddlewareResourceMapper middlewareResourceMapper;
+    private final DatabaseResourceMapper databaseResourceMapper;
     private final SupportService supportService;
     private final AuditService auditService;
 
@@ -117,6 +129,12 @@ public class InformationSystemService {
         List<Long> projectIds = projectSystemRelMapper.selectList(
                         Wrappers.<ProjectSystemRel>lambdaQuery().eq(ProjectSystemRel::getInformationSystemId, id))
                 .stream().map(ProjectSystemRel::getProjectId).collect(Collectors.toList());
+        List<Long> middlewareIds = softwareMiddlewareRelMapper.selectList(
+                        Wrappers.<SoftwareMiddlewareRel>lambdaQuery().eq(SoftwareMiddlewareRel::getSoftwareId, id))
+                .stream().map(SoftwareMiddlewareRel::getMiddlewareId).collect(Collectors.toList());
+        List<Long> databaseIds = softwareDatabaseRelMapper.selectList(
+                        Wrappers.<SoftwareDatabaseRel>lambdaQuery().eq(SoftwareDatabaseRel::getSoftwareId, id))
+                .stream().map(SoftwareDatabaseRel::getDatabaseId).collect(Collectors.toList());
 
         Map<String, Object> detail = new LinkedHashMap<String, Object>();
         detail.put("informationSystem", toInformationSystemView(informationSystem));
@@ -124,10 +142,14 @@ public class InformationSystemService {
         detail.put("personIds", personIds);
         detail.put("hardwareAssetIds", hardwareAssetIds);
         detail.put("projectIds", projectIds);
+        detail.put("middlewareIds", middlewareIds);
+        detail.put("databaseIds", databaseIds);
         detail.put("serviceProviders", buildServiceProviderSummaries(serviceProviderIds));
         detail.put("persons", buildPersonSummaries(personIds));
         detail.put("hardwareAssets", buildHardwareAssetSummaries(hardwareAssetIds));
         detail.put("projects", buildProjectSummaries(projectIds));
+        detail.put("middlewares", buildMiddlewareSummaries(middlewareIds));
+        detail.put("databases", buildDatabaseSummaries(databaseIds));
         return detail;
     }
 
@@ -185,6 +207,8 @@ public class InformationSystemService {
         syncServiceProviderRelations(id, validateServiceProviderIds(request.getServiceProviderIds()));
         syncPersonRelations(id, validatePersonIds(request.getPersonIds()));
         syncHardwareRelations(id, validateHardwareIds(request.getHardwareAssetIds()));
+        syncMiddlewareRelations(id, validateMiddlewareIds(request.getMiddlewareIds()));
+        syncDatabaseRelations(id, validateDatabaseIds(request.getDatabaseIds()));
         auditService.record("INFORMATION_SYSTEM", id, AuditActionType.RELATION_SYNC, "Synchronized information system relations", "SYSTEM");
     }
 
@@ -198,6 +222,8 @@ public class InformationSystemService {
         systemPersonRelMapper.delete(Wrappers.<SystemPersonRel>lambdaQuery().eq(SystemPersonRel::getInformationSystemId, id));
         projectSystemRelMapper.delete(Wrappers.<ProjectSystemRel>lambdaQuery().eq(ProjectSystemRel::getInformationSystemId, id));
         hardwareSystemRelMapper.delete(Wrappers.<AssetHardwareSystemRel>lambdaQuery().eq(AssetHardwareSystemRel::getInformationSystemId, id));
+        softwareMiddlewareRelMapper.delete(Wrappers.<SoftwareMiddlewareRel>lambdaQuery().eq(SoftwareMiddlewareRel::getSoftwareId, id));
+        softwareDatabaseRelMapper.delete(Wrappers.<SoftwareDatabaseRel>lambdaQuery().eq(SoftwareDatabaseRel::getSoftwareId, id));
         informationSystemMapper.deleteById(id);
         auditService.record("INFORMATION_SYSTEM", id, AuditActionType.DELETE, "Deleted information system " + existing.getCode(), "SYSTEM");
     }
@@ -215,6 +241,8 @@ public class InformationSystemService {
         validateServiceProviderIds(request.getServiceProviderIds());
         validatePersonIds(request.getPersonIds());
         validateHardwareIds(request.getHardwareAssetIds());
+        validateMiddlewareIds(request.getMiddlewareIds());
+        validateDatabaseIds(request.getDatabaseIds());
     }
 
     private InformationSystem toEntity(InformationSystemUpsertRequest request, InformationSystem existing) {
@@ -281,6 +309,12 @@ public class InformationSystemService {
         if (createMode || request.getHardwareAssetIds() != null) {
             syncHardwareRelations(informationSystemId, validateHardwareIds(request.getHardwareAssetIds()));
         }
+        if (createMode || request.getMiddlewareIds() != null) {
+            syncMiddlewareRelations(informationSystemId, validateMiddlewareIds(request.getMiddlewareIds()));
+        }
+        if (createMode || request.getDatabaseIds() != null) {
+            syncDatabaseRelations(informationSystemId, validateDatabaseIds(request.getDatabaseIds()));
+        }
     }
 
     private void syncServiceProviderRelations(Long informationSystemId, List<Long> serviceProviderIds) {
@@ -311,6 +345,26 @@ public class InformationSystemService {
             relation.setInformationSystemId(informationSystemId);
             relation.setHardwareAssetId(hardwareAssetId);
             hardwareSystemRelMapper.insert(relation);
+        }
+    }
+
+    private void syncMiddlewareRelations(Long informationSystemId, List<Long> middlewareIds) {
+        softwareMiddlewareRelMapper.delete(Wrappers.<SoftwareMiddlewareRel>lambdaQuery().eq(SoftwareMiddlewareRel::getSoftwareId, informationSystemId));
+        for (Long middlewareId : middlewareIds) {
+            SoftwareMiddlewareRel relation = new SoftwareMiddlewareRel();
+            relation.setSoftwareId(informationSystemId);
+            relation.setMiddlewareId(middlewareId);
+            softwareMiddlewareRelMapper.insert(relation);
+        }
+    }
+
+    private void syncDatabaseRelations(Long informationSystemId, List<Long> databaseIds) {
+        softwareDatabaseRelMapper.delete(Wrappers.<SoftwareDatabaseRel>lambdaQuery().eq(SoftwareDatabaseRel::getSoftwareId, informationSystemId));
+        for (Long databaseId : databaseIds) {
+            SoftwareDatabaseRel relation = new SoftwareDatabaseRel();
+            relation.setSoftwareId(informationSystemId);
+            relation.setDatabaseId(databaseId);
+            softwareDatabaseRelMapper.insert(relation);
         }
     }
 
@@ -422,6 +476,60 @@ public class InformationSystemService {
                 .collect(Collectors.toList());
     }
 
+    private List<Map<String, Object>> buildMiddlewareSummaries(List<Long> middlewareIds) {
+        List<Long> normalizedIds = normalizeIds(middlewareIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, MiddlewareResource> middlewareMap = middlewareResourceMapper.selectList(
+                        Wrappers.<MiddlewareResource>lambdaQuery().in(MiddlewareResource::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(MiddlewareResource::getId, item -> item));
+
+        return normalizedIds.stream()
+                .map(middlewareMap::get)
+                .filter(item -> item != null)
+                .map(item -> {
+                    Map<String, Object> summary = new LinkedHashMap<String, Object>();
+                    summary.put("id", item.getId());
+                    summary.put("middlewareCode", item.getMiddlewareCode());
+                    summary.put("middlewareName", item.getMiddlewareName());
+                    summary.put("middlewareType", item.getMiddlewareType());
+                    summary.put("version", item.getVersion());
+                    summary.put("status", item.getStatus());
+                    return summary;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private List<Map<String, Object>> buildDatabaseSummaries(List<Long> databaseIds) {
+        List<Long> normalizedIds = normalizeIds(databaseIds);
+        if (normalizedIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Map<Long, DatabaseResource> databaseMap = databaseResourceMapper.selectList(
+                        Wrappers.<DatabaseResource>lambdaQuery().in(DatabaseResource::getId, normalizedIds))
+                .stream()
+                .collect(Collectors.toMap(DatabaseResource::getId, item -> item));
+
+        return normalizedIds.stream()
+                .map(databaseMap::get)
+                .filter(item -> item != null)
+                .map(item -> {
+                    Map<String, Object> summary = new LinkedHashMap<String, Object>();
+                    summary.put("id", item.getId());
+                    summary.put("databaseCode", item.getDatabaseCode());
+                    summary.put("databaseName", item.getDatabaseName());
+                    summary.put("databaseType", item.getDatabaseType());
+                    summary.put("version", item.getVersion());
+                    summary.put("status", item.getStatus());
+                    return summary;
+                })
+                .collect(Collectors.toList());
+    }
+
     private Long countBySystemType(String systemType) {
         return informationSystemMapper.selectCount(Wrappers.<InformationSystem>lambdaQuery().eq(InformationSystem::getSystemType, systemType));
     }
@@ -453,6 +561,22 @@ public class InformationSystemService {
         List<Long> normalizedIds = normalizeIds(hardwareAssetIds);
         for (Long hardwareAssetId : normalizedIds) {
             supportService.ensureHardwareExists(hardwareAssetId);
+        }
+        return normalizedIds;
+    }
+
+    private List<Long> validateMiddlewareIds(List<Long> middlewareIds) {
+        List<Long> normalizedIds = normalizeIds(middlewareIds);
+        for (Long middlewareId : normalizedIds) {
+            supportService.ensureMiddlewareResourceExists(middlewareId);
+        }
+        return normalizedIds;
+    }
+
+    private List<Long> validateDatabaseIds(List<Long> databaseIds) {
+        List<Long> normalizedIds = normalizeIds(databaseIds);
+        for (Long databaseId : normalizedIds) {
+            supportService.ensureDatabaseResourceExists(databaseId);
         }
         return normalizedIds;
     }

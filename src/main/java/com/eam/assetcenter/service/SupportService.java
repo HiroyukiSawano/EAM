@@ -3,9 +3,11 @@ package com.eam.assetcenter.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.eam.assetcenter.common.enums.CommonStatus;
 import com.eam.assetcenter.common.enums.CooperationScope;
+import com.eam.assetcenter.common.enums.DatabaseType;
 import com.eam.assetcenter.common.enums.EnterpriseNature;
 import com.eam.assetcenter.common.enums.HardwareCategory;
 import com.eam.assetcenter.common.enums.HardwareStatus;
+import com.eam.assetcenter.common.enums.MiddlewareType;
 import com.eam.assetcenter.common.enums.PaymentStatus;
 import com.eam.assetcenter.common.enums.PersonType;
 import com.eam.assetcenter.common.enums.DeploymentArchitecture;
@@ -16,15 +18,19 @@ import com.eam.assetcenter.common.enums.VendorLevel;
 import com.eam.assetcenter.common.exception.BusinessException;
 import com.eam.assetcenter.domain.entity.AssetHardware;
 import com.eam.assetcenter.domain.entity.AssetLocation;
+import com.eam.assetcenter.domain.entity.DatabaseResource;
 import com.eam.assetcenter.domain.entity.Department;
 import com.eam.assetcenter.domain.entity.InformationSystem;
+import com.eam.assetcenter.domain.entity.MiddlewareResource;
 import com.eam.assetcenter.domain.entity.Person;
 import com.eam.assetcenter.domain.entity.ProjectInfo;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
 import com.eam.assetcenter.infrastructure.mapper.AssetHardwareMapper;
 import com.eam.assetcenter.infrastructure.mapper.AssetLocationMapper;
+import com.eam.assetcenter.infrastructure.mapper.DatabaseResourceMapper;
 import com.eam.assetcenter.infrastructure.mapper.DepartmentMapper;
 import com.eam.assetcenter.infrastructure.mapper.InformationSystemMapper;
+import com.eam.assetcenter.infrastructure.mapper.MiddlewareResourceMapper;
 import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectInfoMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
@@ -43,6 +49,8 @@ public class SupportService {
     private final ServiceProviderMapper serviceProviderMapper;
     private final PersonMapper personMapper;
     private final InformationSystemMapper informationSystemMapper;
+    private final MiddlewareResourceMapper middlewareResourceMapper;
+    private final DatabaseResourceMapper databaseResourceMapper;
     private final ProjectInfoMapper projectInfoMapper;
     private final AssetHardwareMapper assetHardwareMapper;
 
@@ -88,6 +96,24 @@ public class SupportService {
     public void ensureInformationSystemExists(Long id) {
         if (id != null && informationSystemMapper.selectById(id) == null) {
             throw new BusinessException("Information system not found: " + id);
+        }
+    }
+
+    /**
+     * 校验中间件资源是否存在。
+     */
+    public void ensureMiddlewareResourceExists(Long id) {
+        if (id != null && middlewareResourceMapper.selectById(id) == null) {
+            throw new BusinessException("Middleware resource not found: " + id);
+        }
+    }
+
+    /**
+     * 校验数据库资源是否存在。
+     */
+    public void ensureDatabaseResourceExists(Long id) {
+        if (id != null && databaseResourceMapper.selectById(id) == null) {
+            throw new BusinessException("Database resource not found: " + id);
         }
     }
 
@@ -138,11 +164,43 @@ public class SupportService {
     }
 
     /**
+     * 校验中间件编码是否唯一。
+     */
+    public void ensureUniqueMiddlewareCode(String code, Long excludeId) {
+        ensureUnique(middlewareResourceMapper.selectOne(new LambdaQueryWrapper<MiddlewareResource>().eq(MiddlewareResource::getMiddlewareCode, code)), excludeId, "Middleware resource code already exists");
+    }
+
+    /**
+     * 校验数据库编码是否唯一。
+     */
+    public void ensureUniqueDatabaseCode(String code, Long excludeId) {
+        ensureUnique(databaseResourceMapper.selectOne(new LambdaQueryWrapper<DatabaseResource>().eq(DatabaseResource::getDatabaseCode, code)), excludeId, "Database resource code already exists");
+    }
+
+    /**
      * 校验信息系统类型是否合法。
      */
     public void ensureSystemTypeValid(String systemType) {
         if (systemType != null && !systemType.trim().isEmpty() && !SystemType.isValid(systemType)) {
             throw new BusinessException("信息系统类型不合法: " + systemType);
+        }
+    }
+
+    /**
+     * 校验中间件类型是否合法。
+     */
+    public void ensureMiddlewareTypeValid(String middlewareType) {
+        if (middlewareType != null && !middlewareType.trim().isEmpty() && !MiddlewareType.isValid(middlewareType)) {
+            throw new BusinessException("中间件类型不合法: " + middlewareType);
+        }
+    }
+
+    /**
+     * 校验数据库类型是否合法。
+     */
+    public void ensureDatabaseTypeValid(String databaseType) {
+        if (databaseType != null && !databaseType.trim().isEmpty() && !DatabaseType.isValid(databaseType)) {
+            throw new BusinessException("数据库类型不合法: " + databaseType);
         }
     }
 
@@ -287,6 +345,10 @@ public class SupportService {
             currentId = ((ServiceProvider) entity).getId();
         } else if (entity instanceof InformationSystem) {
             currentId = ((InformationSystem) entity).getId();
+        } else if (entity instanceof MiddlewareResource) {
+            currentId = ((MiddlewareResource) entity).getId();
+        } else if (entity instanceof DatabaseResource) {
+            currentId = ((DatabaseResource) entity).getId();
         } else if (entity instanceof ProjectInfo) {
             currentId = ((ProjectInfo) entity).getId();
         } else if (entity instanceof AssetHardware) {
