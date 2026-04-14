@@ -474,7 +474,7 @@ public class ProjectService {
                     summary.put("code", item.getCode());
                     summary.put("systemType", item.getSystemType());
                     summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
-                    summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
+                    summary.put("ownerName", firstNonBlank(item.getOwnerName(), ownerNameMap.get(item.getOwnerPersonId())));
                     return summary;
                 })
                 .collect(Collectors.toList());
@@ -663,5 +663,9 @@ public class ProjectService {
             result.put(entry.getKey(), new ArrayList<String>(entry.getValue()));
         }
         return result;
+    }
+
+    private String firstNonBlank(String primary, String fallback) {
+        return StringUtils.hasText(primary) ? primary : fallback;
     }
 }

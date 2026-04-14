@@ -34,6 +34,7 @@ import com.eam.assetcenter.web.request.ServiceProviderUpsertRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -598,7 +599,6 @@ public class ServiceProviderService {
         Map<Long, String> ownerNameMap = loadPersonNameMap(systemMap.values().stream()
                 .map(InformationSystem::getOwnerPersonId)
                 .collect(Collectors.toList()));
-
         List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
         for (Long informationSystemId : normalizedIds) {
             InformationSystem item = systemMap.get(informationSystemId);
@@ -611,7 +611,7 @@ public class ServiceProviderService {
             summary.put("name", item.getName());
             summary.put("systemType", item.getSystemType());
             summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
-            summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
+            summary.put("ownerName", firstNonBlank(item.getOwnerName(), ownerNameMap.get(item.getOwnerPersonId())));
             result.add(summary);
         }
         return result;
@@ -735,6 +735,10 @@ public class ServiceProviderService {
             return "服务商运维人员";
         }
         return "关联人员";
+    }
+
+    private String firstNonBlank(String primary, String fallback) {
+        return StringUtils.hasText(primary) ? primary : fallback;
     }
 
     private String resolveLegacyType(List<String> cooperationScopes) {

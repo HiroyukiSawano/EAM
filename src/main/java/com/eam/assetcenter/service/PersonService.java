@@ -37,6 +37,7 @@ import com.eam.assetcenter.web.request.PersonUpsertRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -480,7 +481,7 @@ public class PersonService {
                     summary.put("systemType", item.getSystemType());
                     summary.put("status", item.getStatus());
                     summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
-                    summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
+                    summary.put("ownerName", firstNonBlank(item.getOwnerName(), ownerNameMap.get(item.getOwnerPersonId())));
                     return summary;
                 })
                 .collect(Collectors.toList());
@@ -632,5 +633,9 @@ public class PersonService {
             conflictLabels = conflictHardwareIds.stream().map(String::valueOf).collect(Collectors.joining("、"));
         }
         throw new BusinessException("所选硬件中存在已分配其他负责人的资产：" + conflictLabels);
+    }
+
+    private String firstNonBlank(String primary, String fallback) {
+        return StringUtils.hasText(primary) ? primary : fallback;
     }
 }

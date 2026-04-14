@@ -445,7 +445,7 @@ public class HardwareAssetService {
             summary.put("name", item.getName());
             summary.put("systemType", item.getSystemType());
             summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
-            summary.put("ownerName", ownerNameMap.get(item.getOwnerPersonId()));
+            summary.put("ownerName", firstNonBlank(item.getOwnerName(), ownerNameMap.get(item.getOwnerPersonId())));
             result.add(summary);
         }
         return result;

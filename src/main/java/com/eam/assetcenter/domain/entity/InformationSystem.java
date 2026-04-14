@@ -60,6 +60,12 @@ public class InformationSystem extends BaseEntity {
     private Long ownerPersonId;
 
     /**
+     * 负责人姓名。
+     */
+    @Schema(description = "负责人姓名")
+    private String ownerName;
+
+    /**
      * 联系电话。
      */
     @Schema(description = "联系电话")

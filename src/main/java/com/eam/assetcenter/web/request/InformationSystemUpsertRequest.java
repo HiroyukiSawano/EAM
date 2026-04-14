@@ -34,6 +34,9 @@ public class InformationSystemUpsertRequest {
     @Schema(description = "负责人主键")
     private Long ownerPersonId;
 
+    @Schema(description = "负责人姓名")
+    private String ownerName;
+
     @Schema(description = "联系电话")
     private String contactPhone;
 

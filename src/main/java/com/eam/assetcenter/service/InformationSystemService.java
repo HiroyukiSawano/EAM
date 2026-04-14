@@ -209,7 +209,9 @@ public class InformationSystemService {
         if (StringUtils.hasText(request.getStatus())) {
             supportService.ensureCommonStatusValid(request.getStatus(), "软件资源");
         }
-        supportService.ensurePersonExists(request.getOwnerPersonId());
+        if (!StringUtils.hasText(request.getOwnerName())) {
+            supportService.ensurePersonExists(request.getOwnerPersonId());
+        }
         validateServiceProviderIds(request.getServiceProviderIds());
         validatePersonIds(request.getPersonIds());
         validateHardwareIds(request.getHardwareAssetIds());
@@ -222,7 +224,8 @@ public class InformationSystemService {
         informationSystem.setSystemType(request.getSystemType());
         informationSystem.setVersionNo(request.getVersionNo());
         informationSystem.setDeploymentArchitecture(request.getDeploymentArchitecture());
-        informationSystem.setOwnerPersonId(request.getOwnerPersonId());
+        informationSystem.setOwnerPersonId(StringUtils.hasText(request.getOwnerName()) ? null : request.getOwnerPersonId());
+        informationSystem.setOwnerName(request.getOwnerName());
         informationSystem.setContactPhone(request.getContactPhone());
         informationSystem.setStatus(StringUtils.hasText(request.getStatus())
                 ? request.getStatus()
@@ -242,6 +245,7 @@ public class InformationSystemService {
                         .set(InformationSystem::getVersionNo, informationSystem.getVersionNo())
                         .set(InformationSystem::getDeploymentArchitecture, informationSystem.getDeploymentArchitecture())
                         .set(InformationSystem::getOwnerPersonId, informationSystem.getOwnerPersonId())
+                        .set(InformationSystem::getOwnerName, informationSystem.getOwnerName())
                         .set(InformationSystem::getContactPhone, informationSystem.getContactPhone())
                         .set(InformationSystem::getStatus, informationSystem.getStatus())
                         .set(InformationSystem::getRemark, informationSystem.getRemark())
@@ -258,7 +262,7 @@ public class InformationSystemService {
         view.put("versionNo", informationSystem.getVersionNo());
         view.put("deploymentArchitecture", informationSystem.getDeploymentArchitecture());
         view.put("ownerPersonId", informationSystem.getOwnerPersonId());
-        view.put("ownerName", ownerNameMap.get(informationSystem.getOwnerPersonId()));
+        view.put("ownerName", firstNonBlank(informationSystem.getOwnerName(), ownerNameMap.get(informationSystem.getOwnerPersonId())));
         view.put("contactPhone", informationSystem.getContactPhone());
         view.put("status", informationSystem.getStatus());
         view.put("remark", informationSystem.getRemark());
@@ -451,6 +455,10 @@ public class InformationSystemService {
             supportService.ensureHardwareExists(hardwareAssetId);
         }
         return normalizedIds;
+    }
+
+    private String firstNonBlank(String first, String second) {
+        return StringUtils.hasText(first) ? first : second;
     }
 
     private Map<Long, String> loadPersonNameMap(List<Long> personIds) {
