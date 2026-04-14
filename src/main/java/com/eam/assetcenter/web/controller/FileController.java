@@ -1,13 +1,19 @@
 package com.eam.assetcenter.web.controller;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.eam.assetcenter.common.api.ApiResponse;
+import com.eam.assetcenter.domain.entity.ProjectDocument;
+import com.eam.assetcenter.infrastructure.mapper.ProjectDocumentMapper;
 import com.eam.assetcenter.service.FileStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +22,8 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +36,7 @@ import java.util.Map;
 public class FileController {
 
     private final FileStorageService fileStorageService;
+    private final ProjectDocumentMapper projectDocumentMapper;
 
     /**
      * 上传图片并返回访问地址。
@@ -68,6 +77,38 @@ public class FileController {
         Resource resource = fileStorageService.loadDocument(fileName);
         return ResponseEntity.ok()
                 .contentType(fileStorageService.resolveMediaType(fileName))
+                .header(HttpHeaders.CONTENT_DISPOSITION, buildDocumentDisposition(fileName))
                 .body(resource);
+    }
+
+    private String buildDocumentDisposition(String fileName) {
+        String downloadName = resolveOriginalDocumentName(fileName);
+        return ContentDisposition.attachment()
+                .filename(downloadName, StandardCharsets.UTF_8)
+                .build()
+                .toString();
+    }
+
+    private String resolveOriginalDocumentName(String fileName) {
+        List<ProjectDocument> documents = projectDocumentMapper.selectList(
+                Wrappers.<ProjectDocument>lambdaQuery()
+                        .eq(ProjectDocument::getFileName, fileName)
+                        .orderByDesc(ProjectDocument::getUploadedAt)
+                        .orderByDesc(ProjectDocument::getId)
+        );
+        if (!documents.isEmpty() && StringUtils.hasText(documents.get(0).getOriginalName())) {
+            return sanitizeDownloadName(documents.get(0).getOriginalName(), fileName);
+        }
+        return sanitizeDownloadName(fileName, "download");
+    }
+
+    private String sanitizeDownloadName(String fileName, String fallback) {
+        String candidate = StringUtils.hasText(fileName) ? fileName.trim() : fallback;
+        candidate = candidate
+                .replace("\r", "")
+                .replace("\n", "")
+                .replace("/", "_")
+                .replace("\\", "_");
+        return StringUtils.hasText(candidate) ? candidate : fallback;
     }
 }
