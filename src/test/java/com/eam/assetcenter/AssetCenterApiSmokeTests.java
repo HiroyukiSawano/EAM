@@ -1,7 +1,14 @@
 package com.eam.assetcenter;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.eam.assetcenter.common.enums.PersonRelationType;
+import com.eam.assetcenter.domain.entity.AssetHardwarePersonRel;
+import com.eam.assetcenter.domain.entity.ProjectPaymentCycle;
+import com.eam.assetcenter.domain.entity.ProjectPeriod;
 import com.eam.assetcenter.domain.entity.ServiceProviderPersonRel;
+import com.eam.assetcenter.infrastructure.mapper.AssetHardwarePersonRelMapper;
+import com.eam.assetcenter.infrastructure.mapper.ProjectPaymentCycleMapper;
+import com.eam.assetcenter.infrastructure.mapper.ProjectPeriodMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderPersonRelMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,6 +54,15 @@ class AssetCenterApiSmokeTests {
     @Autowired
     private ServiceProviderPersonRelMapper serviceProviderPersonRelMapper;
 
+    @Autowired
+    private AssetHardwarePersonRelMapper hardwarePersonRelMapper;
+
+    @Autowired
+    private ProjectPeriodMapper projectPeriodMapper;
+
+    @Autowired
+    private ProjectPaymentCycleMapper projectPaymentCycleMapper;
+
     @Test
     void organizationSupportOptionsShouldWork() throws Exception {
         String suffix = uniqueSuffix("ORG");
@@ -90,7 +106,7 @@ class AssetCenterApiSmokeTests {
         assertEquals("正常", findDictionaryLabel(dictionaries.path("departmentStatus"), "ACTIVE"));
         assertEquals("停用", findDictionaryLabel(dictionaries.path("personStatus"), "INACTIVE"));
         assertEquals("规划中", findDictionaryLabel(dictionaries.path("projectStatus"), "PLANNING"));
-        assertEquals("已登记", findDictionaryLabel(dictionaries.path("hardwareStatus"), "REGISTERED"));
+        assertEquals("正常运行", findDictionaryLabel(dictionaries.path("hardwareStatus"), "RUNNING"));
         assertTrue(dictionaries.path("serviceProviderStatus").isArray());
         assertTrue(dictionaries.path("informationSystemStatus").isArray());
     }
@@ -111,7 +127,7 @@ class AssetCenterApiSmokeTests {
         assertTrue(serviceProviderRoot.path("message").asText().contains("服务商状态不合法"));
 
         JsonNode informationSystemRoot = readRoot(performPostExpectFailure("/api/v1/information-systems", createInformationSystemPayload(suffix, "INVALID")));
-        assertTrue(informationSystemRoot.path("message").asText().contains("信息系统状态不合法"));
+        assertTrue(informationSystemRoot.path("message").asText().contains("软件资源状态不合法"));
 
         JsonNode projectRoot = readRoot(performPostExpectFailure("/api/v1/projects", createProjectPayload(suffix, "INVALID")));
         assertTrue(projectRoot.path("message").asText().contains("项目状态不合法"));
@@ -175,14 +191,17 @@ class AssetCenterApiSmokeTests {
 
         assertTrue(arrayContainsId(getDataNode(performGet("/api/v1/hardware-assets/options")), hardwareId));
 
-        getDataNode(performPut("/api/v1/hardware-assets/" + hardwareId + "/systems", idsPayload(informationSystemId)));
-        getDataNode(performPut("/api/v1/hardware-assets/" + hardwareId + "/owners", idsPayload(personId)));
-        getDataNode(performPut("/api/v1/hardware-assets/" + hardwareId + "/vendors", idsPayload(serviceProviderId)));
+        Map<String, Object> hardwareRelations = new LinkedHashMap<String, Object>();
+        hardwareRelations.put("informationSystemIds", new long[]{informationSystemId});
+        hardwareRelations.put("personIds", new long[]{personId});
+        hardwareRelations.put("projectIds", new long[0]);
+        hardwareRelations.put("serviceProviderIds", new long[]{serviceProviderId});
+        getDataNode(performPut("/api/v1/hardware-assets/" + hardwareId + "/relations", hardwareRelations));
 
         JsonNode hardwareDetail = getDataNode(performGet("/api/v1/hardware-assets/" + hardwareId));
         assertEquals(hardwareId, asLong(hardwareDetail.path("hardwareAsset").path("id")));
         assertTrue(arrayContainsId(hardwareDetail.path("informationSystemIds"), informationSystemId));
-        assertTrue(arrayContainsId(hardwareDetail.path("ownerIds"), personId));
+        assertTrue(arrayContainsId(hardwareDetail.path("personIds"), personId));
         assertTrue(arrayContainsId(hardwareDetail.path("vendorIds"), serviceProviderId));
     }
 
@@ -356,15 +375,15 @@ class AssetCenterApiSmokeTests {
         Map<String, Object> updatePayload = new LinkedHashMap<String, Object>();
         updatePayload.put("code", "SP-" + suffix);
         updatePayload.put("name", "测试服务商-" + suffix);
-        updatePayload.put("shortName", "");
+        updatePayload.put("shortName", "简称-" + suffix);
         updatePayload.put("logoUrl", null);
-        updatePayload.put("unifiedSocialCreditCode", null);
+        updatePayload.put("unifiedSocialCreditCode", "USCC-" + suffix);
         updatePayload.put("cooperationScopes", new String[]{"SOFTWARE_DEVELOPMENT"});
-        updatePayload.put("enterpriseNature", null);
-        updatePayload.put("vendorLevel", null);
+        updatePayload.put("enterpriseNature", "PRIVATE");
+        updatePayload.put("vendorLevel", "STRATEGIC_PARTNER");
         updatePayload.put("score", 5);
-        updatePayload.put("businessContact", "");
-        updatePayload.put("businessPhone", "");
+        updatePayload.put("businessContact", "联系人-" + suffix);
+        updatePayload.put("businessPhone", "1380000" + String.format("%04d", SEQUENCE.getAndIncrement()));
         updatePayload.put("status", "ACTIVE");
         updatePayload.put("remark", null);
         updatePayload.put("personIds", new long[0]);
@@ -374,11 +393,10 @@ class AssetCenterApiSmokeTests {
 
         JsonNode providerDetail = getDataNode(performGet("/api/v1/service-providers/" + serviceProviderId));
         JsonNode provider = providerDetail.path("serviceProvider");
-        assertEquals("", provider.path("shortName").asText());
-        assertNullOrMissing(provider, "enterpriseNature");
-        assertNullOrMissing(provider, "vendorLevel");
-        assertEquals("", provider.path("businessContact").asText());
-        assertEquals("", provider.path("businessPhone").asText());
+        assertEquals("简称-" + suffix, provider.path("shortName").asText());
+        assertEquals("PRIVATE", provider.path("enterpriseNature").asText());
+        assertEquals("STRATEGIC_PARTNER", provider.path("vendorLevel").asText());
+        assertEquals("联系人-" + suffix, provider.path("businessContact").asText());
         assertNullOrMissing(provider, "remark");
         assertEquals(0, providerDetail.path("personIds").size());
 
@@ -591,6 +609,61 @@ class AssetCenterApiSmokeTests {
     }
 
     @Test
+    void projectCyclesShouldPersistAndDerivePaymentStatus() throws Exception {
+        String suffix = uniqueSuffix("PRJ-CYCLE");
+
+        Map<String, Object> createPayload = createProjectPayload(suffix, "PLANNING");
+        createPayload.put("projectPeriods", new Object[]{
+                projectPeriodPayload("立项", "2026-04-30", "2026-05-02"),
+                projectPeriodPayload("开工", "2026-05-10", null)
+        });
+        createPayload.put("paymentCycles", new Object[]{
+                paymentCyclePayload("首付款", 50, 20000, "2026-04-30", "2026-05-03"),
+                paymentCyclePayload("第二阶段款项", 30, 150000, "2026-05-30", null)
+        });
+
+        long projectId = asLong(getDataNode(performPost("/api/v1/projects", createPayload)).path("id"));
+        JsonNode createdDetail = getDataNode(performGet("/api/v1/projects/" + projectId));
+        assertEquals("PARTIAL", createdDetail.path("project").path("paymentStatus").asText());
+        assertEquals(2, createdDetail.path("projectPeriods").size());
+        assertEquals("立项", createdDetail.path("projectPeriods").path(0).path("stageName").asText());
+        assertEquals("2026-05-02", createdDetail.path("projectPeriods").path(0).path("actualDate").asText());
+        assertEquals(2, createdDetail.path("paymentCycles").size());
+        assertEquals("第二阶段款项", createdDetail.path("paymentCycles").path(1).path("stageName").asText());
+        assertTrue(createdDetail.path("paymentCycles").path(1).path("actualPaymentDate").isNull()
+                || createdDetail.path("paymentCycles").path(1).path("actualPaymentDate").isMissingNode());
+
+        Map<String, Object> paidPayload = createProjectPayload(suffix + "-PAID", "PLANNING");
+        paidPayload.put("projectPeriods", new Object[]{
+                projectPeriodPayload("立项", "2026-04-30", "2026-05-02")
+        });
+        paidPayload.put("paymentCycles", new Object[]{
+                paymentCyclePayload("首付款", 50, 20000, "2026-04-30", "2026-05-03"),
+                paymentCyclePayload("尾款", 50, 20000, "2026-05-30", "2026-06-03")
+        });
+        getDataNode(performPut("/api/v1/projects/" + projectId, paidPayload));
+        assertEquals("PAID", getDataNode(performGet("/api/v1/projects/" + projectId))
+                .path("project").path("paymentStatus").asText());
+
+        Map<String, Object> pendingPayload = createProjectPayload(suffix + "-PENDING", "PLANNING");
+        pendingPayload.put("projectPeriods", new Object[]{
+                projectPeriodPayload("立项", "2026-04-30", null)
+        });
+        pendingPayload.put("paymentCycles", new Object[]{
+                paymentCyclePayload("首付款", 100, 40000, "2026-04-30", null)
+        });
+        getDataNode(performPut("/api/v1/projects/" + projectId, pendingPayload));
+        assertEquals("PENDING", getDataNode(performGet("/api/v1/projects/" + projectId))
+                .path("project").path("paymentStatus").asText());
+
+        getDataNode(performDelete("/api/v1/projects/" + projectId));
+        assertEquals(0L, projectPeriodMapper.selectCount(Wrappers.<ProjectPeriod>lambdaQuery()
+                .eq(ProjectPeriod::getProjectId, projectId)).longValue());
+        assertEquals(0L, projectPaymentCycleMapper.selectCount(Wrappers.<ProjectPaymentCycle>lambdaQuery()
+                .eq(ProjectPaymentCycle::getProjectId, projectId)).longValue());
+    }
+
+    @Test
     void listPagesShouldSupportNewUtilityFilters() throws Exception {
         String suffix = uniqueSuffix("LIST-FILTER");
         long departmentAId = createDepartment(suffix + "-A");
@@ -649,31 +722,36 @@ class AssetCenterApiSmokeTests {
     }
 
     @Test
-    void personHardwareConflictShouldFailWithoutPartialWrite() throws Exception {
-        String suffix = uniqueSuffix("CONFLICT");
+    void personHardwareRelationsShouldAllowMultipleUsers() throws Exception {
+        String suffix = uniqueSuffix("PERSON-HW-USERS");
         long departmentId = createDepartment(suffix);
         long locationId = createLocation(suffix);
-        long ownerAId = createPerson(suffix + "-A", departmentId);
-        long ownerBId = createPerson(suffix + "-B", departmentId);
+        long personAId = createPerson(suffix + "-A", departmentId);
+        long personBId = createPerson(suffix + "-B", departmentId);
         long hardwareId = createHardwareAsset(suffix, departmentId, locationId);
 
-        Map<String, Object> ownerARelations = new LinkedHashMap<String, Object>();
-        ownerARelations.put("hardwareAssetIds", new long[]{hardwareId});
-        ownerARelations.put("informationSystemIds", new long[0]);
-        getDataNode(performPut("/api/v1/persons/" + ownerAId + "/relations", ownerARelations));
+        Map<String, Object> personARelations = new LinkedHashMap<String, Object>();
+        personARelations.put("hardwareAssetIds", new long[]{hardwareId});
+        personARelations.put("informationSystemIds", new long[0]);
+        getDataNode(performPut("/api/v1/persons/" + personAId + "/relations", personARelations));
 
-        Map<String, Object> ownerBRelations = new LinkedHashMap<String, Object>();
-        ownerBRelations.put("hardwareAssetIds", new long[]{hardwareId});
-        ownerBRelations.put("informationSystemIds", new long[0]);
-        MvcResult conflictResult = performPutExpectFailure("/api/v1/persons/" + ownerBId + "/relations", ownerBRelations);
-        JsonNode conflictRoot = readRoot(conflictResult);
-        assertTrue(conflictRoot.path("message").asText().contains("已分配其他负责人"));
+        Map<String, Object> personBRelations = new LinkedHashMap<String, Object>();
+        personBRelations.put("hardwareAssetIds", new long[]{hardwareId});
+        personBRelations.put("informationSystemIds", new long[0]);
+        getDataNode(performPut("/api/v1/persons/" + personBId + "/relations", personBRelations));
 
-        JsonNode ownerADetail = getDataNode(performGet("/api/v1/persons/" + ownerAId));
-        assertTrue(arrayContainsId(ownerADetail.path("hardwareAssetIds"), hardwareId));
+        JsonNode personADetail = getDataNode(performGet("/api/v1/persons/" + personAId));
+        assertTrue(arrayContainsId(personADetail.path("hardwareAssetIds"), hardwareId));
 
-        JsonNode ownerBDetail = getDataNode(performGet("/api/v1/persons/" + ownerBId));
-        assertEquals(0, ownerBDetail.path("hardwareAssetIds").size());
+        JsonNode personBDetail = getDataNode(performGet("/api/v1/persons/" + personBId));
+        assertTrue(arrayContainsId(personBDetail.path("hardwareAssetIds"), hardwareId));
+
+        assertEquals(2L, hardwarePersonRelMapper.selectCount(Wrappers.<AssetHardwarePersonRel>lambdaQuery()
+                .eq(AssetHardwarePersonRel::getHardwareAssetId, hardwareId)
+                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.USER.name())).longValue());
+        assertEquals(0L, hardwarePersonRelMapper.selectCount(Wrappers.<AssetHardwarePersonRel>lambdaQuery()
+                .eq(AssetHardwarePersonRel::getHardwareAssetId, hardwareId)
+                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name())).longValue());
     }
 
     @Test
@@ -788,9 +866,16 @@ class AssetCenterApiSmokeTests {
         Map<String, Object> payload = new LinkedHashMap<String, Object>();
         payload.put("code", "SP-" + suffix);
         payload.put("name", "测试服务商-" + suffix);
+        payload.put("shortName", "简称-" + suffix);
+        payload.put("unifiedSocialCreditCode", "USCC-" + suffix);
         payload.put("type", "SERVICE_PROVIDER");
+        payload.put("enterpriseNature", "PRIVATE");
+        payload.put("cooperationScopes", new String[]{"SOFTWARE_DEVELOPMENT"});
+        payload.put("vendorLevel", "GENERAL_SUPPLIER");
         payload.put("status", status);
         payload.put("ratingLevel", "A");
+        payload.put("businessContact", "联系人-" + suffix);
+        payload.put("businessPhone", "1380000" + String.format("%04d", SEQUENCE.getAndIncrement()));
         return payload;
     }
 
@@ -811,6 +896,25 @@ class AssetCenterApiSmokeTests {
         payload.put("projectType", "NEW_BUILD");
         payload.put("projectStatus", projectStatus);
         payload.put("remark", "闭环联调用例");
+        return payload;
+    }
+
+    private Map<String, Object> projectPeriodPayload(String stageName, String plannedDate, String actualDate) {
+        Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        payload.put("stageName", stageName);
+        payload.put("plannedDate", plannedDate);
+        payload.put("actualDate", actualDate);
+        return payload;
+    }
+
+    private Map<String, Object> paymentCyclePayload(String stageName, int paymentRatio, int paymentAmount,
+                                                    String plannedPaymentDate, String actualPaymentDate) {
+        Map<String, Object> payload = new LinkedHashMap<String, Object>();
+        payload.put("stageName", stageName);
+        payload.put("paymentRatio", paymentRatio);
+        payload.put("paymentAmount", paymentAmount);
+        payload.put("plannedPaymentDate", plannedPaymentDate);
+        payload.put("actualPaymentDate", actualPaymentDate);
         return payload;
     }
 
@@ -896,6 +1000,13 @@ class AssetCenterApiSmokeTests {
         return mockMvc.perform(delete(url))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
+                .andReturn();
+    }
+
+    private MvcResult performDelete(String url) throws Exception {
+        return mockMvc.perform(delete(url))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
                 .andReturn();
     }
 

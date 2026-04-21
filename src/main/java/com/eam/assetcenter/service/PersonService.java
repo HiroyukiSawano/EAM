@@ -44,7 +44,6 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -113,7 +112,9 @@ public class PersonService {
     public Map<String, Object> getDetail(Long id) {
         Person person = getById(id);
         List<Long> hardwareAssetIds = hardwarePersonRelMapper.selectList(
-                        Wrappers.<AssetHardwarePersonRel>lambdaQuery().eq(AssetHardwarePersonRel::getPersonId, id))
+                        Wrappers.<AssetHardwarePersonRel>lambdaQuery()
+                                .eq(AssetHardwarePersonRel::getPersonId, id)
+                                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.USER.name()))
                 .stream().map(AssetHardwarePersonRel::getHardwareAssetId).collect(Collectors.toList());
         List<Long> informationSystemIds = systemPersonRelMapper.selectList(
                         Wrappers.<SystemPersonRel>lambdaQuery().eq(SystemPersonRel::getPersonId, id))
@@ -177,13 +178,15 @@ public class PersonService {
         result.put("total", personMapper.selectCount(Wrappers.<Person>lambdaQuery()));
         result.put("development", personMapper.selectCount(Wrappers.<Person>lambdaQuery().eq(Person::getPersonType, PersonType.DEV.name())));
         result.put("ops", personMapper.selectCount(Wrappers.<Person>lambdaQuery().eq(Person::getPersonType, PersonType.OPS.name())));
-        Set<Long> hardwareOwnerIds = hardwarePersonRelMapper.selectList(
-                        Wrappers.<AssetHardwarePersonRel>lambdaQuery()
-                                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name()))
+        long hardwareOwnerCount = assetHardwareMapper.selectList(
+                        Wrappers.<AssetHardware>lambdaQuery().isNotNull(AssetHardware::getOwnerName))
                 .stream()
-                .map(AssetHardwarePersonRel::getPersonId)
-                .collect(Collectors.toSet());
-        result.put("hardwareOwners", hardwareOwnerIds.size());
+                .map(AssetHardware::getOwnerName)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.toSet())
+                .size();
+        result.put("hardwareOwners", hardwareOwnerCount);
         return result;
     }
 
@@ -208,16 +211,14 @@ public class PersonService {
             supportService.ensureProjectExists(projectId);
         }
 
-        assertResponsibleHardwareConflicts(id, hardwareAssetIds);
-
         hardwarePersonRelMapper.delete(Wrappers.<AssetHardwarePersonRel>lambdaQuery()
                 .eq(AssetHardwarePersonRel::getPersonId, id)
-                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name()));
+                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.USER.name()));
         for (Long hardwareAssetId : hardwareAssetIds) {
             AssetHardwarePersonRel relation = new AssetHardwarePersonRel();
             relation.setHardwareAssetId(hardwareAssetId);
             relation.setPersonId(id);
-            relation.setRelationType(PersonRelationType.RESPONSIBLE.name());
+            relation.setRelationType(PersonRelationType.USER.name());
             hardwarePersonRelMapper.insert(relation);
         }
 
@@ -413,15 +414,14 @@ public class PersonService {
     }
 
     private void syncHardwareRelations(Long personId, List<Long> hardwareAssetIds) {
-        assertResponsibleHardwareConflicts(personId, hardwareAssetIds);
         hardwarePersonRelMapper.delete(Wrappers.<AssetHardwarePersonRel>lambdaQuery()
                 .eq(AssetHardwarePersonRel::getPersonId, personId)
-                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name()));
+                .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.USER.name()));
         for (Long hardwareAssetId : hardwareAssetIds) {
             AssetHardwarePersonRel relation = new AssetHardwarePersonRel();
             relation.setHardwareAssetId(hardwareAssetId);
             relation.setPersonId(personId);
-            relation.setRelationType(PersonRelationType.RESPONSIBLE.name());
+            relation.setRelationType(PersonRelationType.USER.name());
             hardwarePersonRelMapper.insert(relation);
         }
     }
@@ -511,20 +511,6 @@ public class PersonService {
                 .map(AssetHardwareVendorRel::getServiceProviderId)
                 .collect(Collectors.toList()));
 
-        Map<Long, Long> ownerIdMap = new LinkedHashMap<Long, Long>();
-        List<AssetHardwarePersonRel> ownerRelations = hardwarePersonRelMapper.selectList(
-                Wrappers.<AssetHardwarePersonRel>lambdaQuery()
-                        .in(AssetHardwarePersonRel::getHardwareAssetId, normalizedIds)
-                        .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name())
-                        .orderByAsc(AssetHardwarePersonRel::getHardwareAssetId)
-                        .orderByAsc(AssetHardwarePersonRel::getId));
-        for (AssetHardwarePersonRel relation : ownerRelations) {
-            ownerIdMap.putIfAbsent(relation.getHardwareAssetId(), relation.getPersonId());
-        }
-        Map<Long, String> ownerNameMap = loadPersonNameMap(ownerRelations.stream()
-                .map(AssetHardwarePersonRel::getPersonId)
-                .collect(Collectors.toList()));
-
         return normalizedIds.stream()
                 .map(hardwareMap::get)
                 .filter(item -> item != null)
@@ -538,7 +524,7 @@ public class PersonService {
                     summary.put("cpuModel", item.getCpuModel());
                     summary.put("memoryGb", item.getMemoryGb());
                     summary.put("serviceProviderName", vendorNameMap.get(vendorIdMap.get(item.getId())));
-                    summary.put("ownerName", ownerNameMap.get(ownerIdMap.get(item.getId())));
+                    summary.put("ownerName", item.getOwnerName());
                     return summary;
                 })
                 .collect(Collectors.toList());
@@ -603,36 +589,6 @@ public class PersonService {
             return existing.getStatus();
         }
         return "ACTIVE";
-    }
-
-    private void assertResponsibleHardwareConflicts(Long personId, List<Long> hardwareAssetIds) {
-        if (hardwareAssetIds == null || hardwareAssetIds.isEmpty()) {
-            return;
-        }
-
-        List<AssetHardwarePersonRel> conflictingRelations = hardwarePersonRelMapper.selectList(
-                Wrappers.<AssetHardwarePersonRel>lambdaQuery()
-                        .in(AssetHardwarePersonRel::getHardwareAssetId, hardwareAssetIds)
-                        .eq(AssetHardwarePersonRel::getRelationType, PersonRelationType.RESPONSIBLE.name())
-                        .ne(AssetHardwarePersonRel::getPersonId, personId));
-        if (conflictingRelations.isEmpty()) {
-            return;
-        }
-
-        List<Long> conflictHardwareIds = conflictingRelations.stream()
-                .map(AssetHardwarePersonRel::getHardwareAssetId)
-                .distinct()
-                .collect(Collectors.toList());
-        List<AssetHardware> conflictAssets = assetHardwareMapper.selectList(
-                Wrappers.<AssetHardware>lambdaQuery().in(AssetHardware::getId, conflictHardwareIds));
-        String conflictLabels = conflictAssets.stream()
-                .map(item -> (item.getAssetCode() == null ? "" : item.getAssetCode()) +
-                        (item.getAssetName() == null ? "" : "/" + item.getAssetName()))
-                .collect(Collectors.joining("、"));
-        if (conflictLabels == null || conflictLabels.trim().isEmpty()) {
-            conflictLabels = conflictHardwareIds.stream().map(String::valueOf).collect(Collectors.joining("、"));
-        }
-        throw new BusinessException("所选硬件中存在已分配其他负责人的资产：" + conflictLabels);
     }
 
     private String firstNonBlank(String primary, String fallback) {

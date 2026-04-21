@@ -88,6 +88,12 @@ public class ProjectUpsertRequest {
     @Schema(description = "项目文档列表")
     private List<ProjectDocumentRequest> documents;
 
+    @Schema(description = "项目周期列表")
+    private List<ProjectPeriodRequest> projectPeriods;
+
+    @Schema(description = "资金支付周期列表")
+    private List<ProjectPaymentCycleRequest> paymentCycles;
+
     @Schema(description = "关联人员主键列表")
     private List<Long> personIds;
 

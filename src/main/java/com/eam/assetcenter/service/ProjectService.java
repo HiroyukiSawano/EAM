@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.eam.assetcenter.common.api.PageResponse;
 import com.eam.assetcenter.common.enums.AuditActionType;
+import com.eam.assetcenter.common.enums.PaymentStatus;
 import com.eam.assetcenter.common.enums.PersonRelationType;
 import com.eam.assetcenter.common.enums.ProjectType;
 import com.eam.assetcenter.common.exception.BusinessException;
@@ -15,7 +16,9 @@ import com.eam.assetcenter.domain.entity.Person;
 import com.eam.assetcenter.domain.entity.ProjectDocument;
 import com.eam.assetcenter.domain.entity.ProjectHardwareRel;
 import com.eam.assetcenter.domain.entity.ProjectInfo;
+import com.eam.assetcenter.domain.entity.ProjectPaymentCycle;
 import com.eam.assetcenter.domain.entity.ProjectPersonRel;
+import com.eam.assetcenter.domain.entity.ProjectPeriod;
 import com.eam.assetcenter.domain.entity.ProjectSystemRel;
 import com.eam.assetcenter.domain.entity.ProjectVendorRel;
 import com.eam.assetcenter.domain.entity.ServiceProvider;
@@ -28,13 +31,17 @@ import com.eam.assetcenter.infrastructure.mapper.PersonMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectDocumentMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectHardwareRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectInfoMapper;
+import com.eam.assetcenter.infrastructure.mapper.ProjectPaymentCycleMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectPersonRelMapper;
+import com.eam.assetcenter.infrastructure.mapper.ProjectPeriodMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectSystemRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ProjectVendorRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderCooperationScopeRelMapper;
 import com.eam.assetcenter.infrastructure.mapper.ServiceProviderMapper;
 import com.eam.assetcenter.infrastructure.mapper.SystemVendorRelMapper;
 import com.eam.assetcenter.web.request.ProjectDocumentRequest;
+import com.eam.assetcenter.web.request.ProjectPaymentCycleRequest;
+import com.eam.assetcenter.web.request.ProjectPeriodRequest;
 import com.eam.assetcenter.web.request.ProjectRelationRequest;
 import com.eam.assetcenter.web.request.ProjectUpsertRequest;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +49,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -60,6 +68,8 @@ public class ProjectService {
 
     private final ProjectInfoMapper projectInfoMapper;
     private final ProjectDocumentMapper projectDocumentMapper;
+    private final ProjectPeriodMapper projectPeriodMapper;
+    private final ProjectPaymentCycleMapper projectPaymentCycleMapper;
     private final ProjectSystemRelMapper projectSystemRelMapper;
     private final ProjectVendorRelMapper projectVendorRelMapper;
     private final ProjectPersonRelMapper projectPersonRelMapper;
@@ -83,6 +93,8 @@ public class ProjectService {
         ProjectInfo projectInfo = toEntity(request);
         projectInfoMapper.insert(projectInfo);
         syncDocuments(projectInfo.getId(), request.getDocuments());
+        syncProjectPeriods(projectInfo.getId(), request);
+        syncPaymentCycles(projectInfo.getId(), request);
         syncFormRelations(projectInfo.getId(), request, true);
         auditService.record("PROJECT", projectInfo.getId(), AuditActionType.CREATE,
                 "Created project " + projectInfo.getCode(), "SYSTEM");
@@ -99,6 +111,8 @@ public class ProjectService {
         ProjectInfo projectInfo = toEntity(request);
         updateProject(id, projectInfo);
         syncDocuments(id, request.getDocuments());
+        syncProjectPeriods(id, request);
+        syncPaymentCycles(id, request);
         syncFormRelations(id, request, false);
         auditService.record("PROJECT", id, AuditActionType.UPDATE,
                 "Updated project " + projectInfo.getCode(), "SYSTEM");
@@ -136,6 +150,8 @@ public class ProjectService {
 
         Map<String, Object> detail = new LinkedHashMap<String, Object>();
         detail.put("project", toProjectView(projectInfo));
+        detail.put("projectPeriods", buildProjectPeriodViews(id, projectInfo));
+        detail.put("paymentCycles", buildPaymentCycleViews(id, projectInfo));
         detail.put("documents", buildDocumentViews(id));
         detail.put("informationSystemIds", informationSystemIds);
         detail.put("serviceProviderIds", serviceProviderIds);
@@ -220,6 +236,8 @@ public class ProjectService {
     public void delete(Long id) {
         ProjectInfo existing = getById(id);
         projectDocumentMapper.delete(Wrappers.<ProjectDocument>lambdaQuery().eq(ProjectDocument::getProjectId, id));
+        projectPeriodMapper.delete(Wrappers.<ProjectPeriod>lambdaQuery().eq(ProjectPeriod::getProjectId, id));
+        projectPaymentCycleMapper.delete(Wrappers.<ProjectPaymentCycle>lambdaQuery().eq(ProjectPaymentCycle::getProjectId, id));
         projectSystemRelMapper.delete(Wrappers.<ProjectSystemRel>lambdaQuery().eq(ProjectSystemRel::getProjectId, id));
         projectVendorRelMapper.delete(Wrappers.<ProjectVendorRel>lambdaQuery().eq(ProjectVendorRel::getProjectId, id));
         projectPersonRelMapper.delete(Wrappers.<ProjectPersonRel>lambdaQuery().eq(ProjectPersonRel::getProjectId, id));
@@ -234,6 +252,8 @@ public class ProjectService {
         supportService.ensureProjectStatusValid(request.getProjectStatus());
         supportService.ensurePaymentStatusValid(request.getPaymentStatus());
         validateDocumentRequests(request.getDocuments());
+        validateProjectPeriods(normalizeProjectPeriodRequests(request));
+        validatePaymentCycles(normalizePaymentCycleRequests(request));
         validatePersonIds(request.getPersonIds());
         validateInformationSystemIds(request.getInformationSystemIds());
         validateHardwareIds(request.getHardwareAssetIds());
@@ -250,18 +270,8 @@ public class ProjectService {
         projectInfo.setContractAmount(request.getContractAmount());
         projectInfo.setOwnerName(request.getOwnerName());
         projectInfo.setOwnerPhone(request.getOwnerPhone());
-        projectInfo.setApprovalDate(request.getApprovalDate());
-        projectInfo.setStartDate(request.getStartDate());
-        projectInfo.setInitialDeliveryDate(request.getInitialDeliveryDate());
-        projectInfo.setEndDate(request.getEndDate());
-        projectInfo.setWarrantyEndDate(request.getWarrantyEndDate());
-        projectInfo.setStage(request.getStage());
-        projectInfo.setPaymentCycleName(request.getPaymentCycleName());
-        projectInfo.setPaymentRatio(request.getPaymentRatio());
-        projectInfo.setPaymentAmount(request.getPaymentAmount());
-        projectInfo.setPlannedPaymentDate(request.getPlannedPaymentDate());
-        projectInfo.setActualPaymentDate(request.getActualPaymentDate());
-        projectInfo.setPaymentStatus(request.getPaymentStatus());
+        applyLegacyPeriodFields(projectInfo, request);
+        applyLegacyPaymentFields(projectInfo, request);
         projectInfo.setRemark(request.getRemark());
         return projectInfo;
     }
@@ -393,6 +403,80 @@ public class ProjectService {
             relation.setHardwareAssetId(hardwareAssetId);
             projectHardwareRelMapper.insert(relation);
         }
+    }
+
+    private void syncProjectPeriods(Long projectId, ProjectUpsertRequest request) {
+        List<ProjectPeriodRequest> periods = normalizeProjectPeriodRequests(request);
+        projectPeriodMapper.delete(Wrappers.<ProjectPeriod>lambdaQuery().eq(ProjectPeriod::getProjectId, projectId));
+        int sortOrder = 1;
+        for (ProjectPeriodRequest item : periods) {
+            ProjectPeriod period = new ProjectPeriod();
+            period.setProjectId(projectId);
+            period.setStageName(item.getStageName().trim());
+            period.setPlannedDate(item.getPlannedDate());
+            period.setActualDate(item.getActualDate());
+            period.setSortOrder(sortOrder++);
+            projectPeriodMapper.insert(period);
+        }
+    }
+
+    private void syncPaymentCycles(Long projectId, ProjectUpsertRequest request) {
+        List<ProjectPaymentCycleRequest> paymentCycles = normalizePaymentCycleRequests(request);
+        projectPaymentCycleMapper.delete(Wrappers.<ProjectPaymentCycle>lambdaQuery().eq(ProjectPaymentCycle::getProjectId, projectId));
+        int sortOrder = 1;
+        for (ProjectPaymentCycleRequest item : paymentCycles) {
+            ProjectPaymentCycle paymentCycle = new ProjectPaymentCycle();
+            paymentCycle.setProjectId(projectId);
+            paymentCycle.setStageName(item.getStageName().trim());
+            paymentCycle.setPaymentRatio(item.getPaymentRatio());
+            paymentCycle.setPaymentAmount(item.getPaymentAmount());
+            paymentCycle.setPlannedPaymentDate(item.getPlannedPaymentDate());
+            paymentCycle.setActualPaymentDate(item.getActualPaymentDate());
+            paymentCycle.setSortOrder(sortOrder++);
+            projectPaymentCycleMapper.insert(paymentCycle);
+        }
+    }
+
+    private List<Map<String, Object>> buildProjectPeriodViews(Long projectId, ProjectInfo projectInfo) {
+        List<ProjectPeriod> periods = projectPeriodMapper.selectList(
+                Wrappers.<ProjectPeriod>lambdaQuery()
+                        .eq(ProjectPeriod::getProjectId, projectId)
+                        .orderByAsc(ProjectPeriod::getSortOrder)
+                        .orderByAsc(ProjectPeriod::getId));
+        if (periods.isEmpty()) {
+            return buildLegacyProjectPeriodViews(projectInfo);
+        }
+        return periods.stream().map(item -> {
+            Map<String, Object> view = new LinkedHashMap<String, Object>();
+            view.put("id", item.getId());
+            view.put("stageName", item.getStageName());
+            view.put("plannedDate", item.getPlannedDate());
+            view.put("actualDate", item.getActualDate());
+            view.put("sortOrder", item.getSortOrder());
+            return view;
+        }).collect(Collectors.toList());
+    }
+
+    private List<Map<String, Object>> buildPaymentCycleViews(Long projectId, ProjectInfo projectInfo) {
+        List<ProjectPaymentCycle> paymentCycles = projectPaymentCycleMapper.selectList(
+                Wrappers.<ProjectPaymentCycle>lambdaQuery()
+                        .eq(ProjectPaymentCycle::getProjectId, projectId)
+                        .orderByAsc(ProjectPaymentCycle::getSortOrder)
+                        .orderByAsc(ProjectPaymentCycle::getId));
+        if (paymentCycles.isEmpty()) {
+            return buildLegacyPaymentCycleViews(projectInfo);
+        }
+        return paymentCycles.stream().map(item -> {
+            Map<String, Object> view = new LinkedHashMap<String, Object>();
+            view.put("id", item.getId());
+            view.put("stageName", item.getStageName());
+            view.put("paymentRatio", item.getPaymentRatio());
+            view.put("paymentAmount", item.getPaymentAmount());
+            view.put("plannedPaymentDate", item.getPlannedPaymentDate());
+            view.put("actualPaymentDate", item.getActualPaymentDate());
+            view.put("sortOrder", item.getSortOrder());
+            return view;
+        }).collect(Collectors.toList());
     }
 
     private List<Map<String, Object>> buildDocumentViews(Long projectId) {
@@ -582,6 +666,231 @@ public class ProjectService {
                 throw new BusinessException("项目文档信息不完整");
             }
         }
+    }
+
+    private void validateProjectPeriods(List<ProjectPeriodRequest> periods) {
+        for (ProjectPeriodRequest item : periods) {
+            if (!StringUtils.hasText(item.getStageName()) || item.getPlannedDate() == null) {
+                throw new BusinessException("项目周期信息不完整");
+            }
+        }
+    }
+
+    private void validatePaymentCycles(List<ProjectPaymentCycleRequest> paymentCycles) {
+        for (ProjectPaymentCycleRequest item : paymentCycles) {
+            if (!StringUtils.hasText(item.getStageName())
+                    || item.getPaymentRatio() == null
+                    || item.getPaymentAmount() == null
+                    || item.getPlannedPaymentDate() == null) {
+                throw new BusinessException("项目支付周期信息不完整");
+            }
+        }
+    }
+
+    private void applyLegacyPeriodFields(ProjectInfo projectInfo, ProjectUpsertRequest request) {
+        List<ProjectPeriodRequest> periods = normalizeProjectPeriodRequests(request);
+        if (request.getProjectPeriods() == null) {
+            projectInfo.setApprovalDate(request.getApprovalDate());
+            projectInfo.setStartDate(request.getStartDate());
+            projectInfo.setInitialDeliveryDate(request.getInitialDeliveryDate());
+            projectInfo.setEndDate(request.getEndDate());
+            projectInfo.setWarrantyEndDate(request.getWarrantyEndDate());
+            projectInfo.setStage(request.getStage());
+            return;
+        }
+
+        projectInfo.setApprovalDate(getPeriodPlannedDate(periods, 0));
+        projectInfo.setStartDate(getPeriodPlannedDate(periods, 1));
+        projectInfo.setInitialDeliveryDate(getPeriodPlannedDate(periods, 2));
+        projectInfo.setEndDate(getPeriodPlannedDate(periods, 3));
+        projectInfo.setWarrantyEndDate(getPeriodPlannedDate(periods, 4));
+        projectInfo.setStage(periods.isEmpty() ? null : periods.get(periods.size() - 1).getStageName());
+    }
+
+    private void applyLegacyPaymentFields(ProjectInfo projectInfo, ProjectUpsertRequest request) {
+        List<ProjectPaymentCycleRequest> paymentCycles = normalizePaymentCycleRequests(request);
+        if (request.getPaymentCycles() == null && paymentCycles.isEmpty()) {
+            projectInfo.setPaymentCycleName(request.getPaymentCycleName());
+            projectInfo.setPaymentRatio(request.getPaymentRatio());
+            projectInfo.setPaymentAmount(request.getPaymentAmount());
+            projectInfo.setPlannedPaymentDate(request.getPlannedPaymentDate());
+            projectInfo.setActualPaymentDate(request.getActualPaymentDate());
+            projectInfo.setPaymentStatus(request.getPaymentStatus());
+            return;
+        }
+
+        if (paymentCycles.isEmpty()) {
+            projectInfo.setPaymentCycleName(null);
+            projectInfo.setPaymentRatio(null);
+            projectInfo.setPaymentAmount(null);
+            projectInfo.setPlannedPaymentDate(null);
+            projectInfo.setActualPaymentDate(null);
+            projectInfo.setPaymentStatus(PaymentStatus.PENDING.name());
+            return;
+        }
+
+        ProjectPaymentCycleRequest firstPaymentCycle = paymentCycles.get(0);
+        projectInfo.setPaymentCycleName(firstPaymentCycle.getStageName());
+        projectInfo.setPaymentRatio(firstPaymentCycle.getPaymentRatio());
+        projectInfo.setPaymentAmount(firstPaymentCycle.getPaymentAmount());
+        projectInfo.setPlannedPaymentDate(firstPaymentCycle.getPlannedPaymentDate());
+        projectInfo.setActualPaymentDate(firstPaymentCycle.getActualPaymentDate());
+        projectInfo.setPaymentStatus(derivePaymentStatus(paymentCycles));
+    }
+
+    private LocalDate getPeriodPlannedDate(List<ProjectPeriodRequest> periods, int index) {
+        return periods.size() > index ? periods.get(index).getPlannedDate() : null;
+    }
+
+    private String derivePaymentStatus(List<ProjectPaymentCycleRequest> paymentCycles) {
+        if (paymentCycles.isEmpty()) {
+            return PaymentStatus.PENDING.name();
+        }
+        long paidCount = paymentCycles.stream().filter(item -> item.getActualPaymentDate() != null).count();
+        if (paidCount == 0) {
+            return PaymentStatus.PENDING.name();
+        }
+        if (paidCount == paymentCycles.size()) {
+            return PaymentStatus.PAID.name();
+        }
+        return PaymentStatus.PARTIAL.name();
+    }
+
+    private List<ProjectPeriodRequest> normalizeProjectPeriodRequests(ProjectUpsertRequest request) {
+        if (request.getProjectPeriods() != null) {
+            return normalizeProjectPeriods(request.getProjectPeriods());
+        }
+
+        List<ProjectPeriodRequest> legacyPeriods = new ArrayList<ProjectPeriodRequest>();
+        appendLegacyProjectPeriod(legacyPeriods, "立项", request.getApprovalDate(), null);
+        appendLegacyProjectPeriod(legacyPeriods, "开工", request.getStartDate(), null);
+        appendLegacyProjectPeriod(legacyPeriods, "初验", request.getInitialDeliveryDate(), null);
+        appendLegacyProjectPeriod(legacyPeriods, "终验", request.getEndDate(), null);
+        appendLegacyProjectPeriod(legacyPeriods, "质保截止", request.getWarrantyEndDate(), null);
+        return legacyPeriods;
+    }
+
+    private List<ProjectPeriodRequest> normalizeProjectPeriods(List<ProjectPeriodRequest> periods) {
+        List<ProjectPeriodRequest> normalizedPeriods = new ArrayList<ProjectPeriodRequest>();
+        for (ProjectPeriodRequest item : periods) {
+            if (item == null || isEmptyProjectPeriod(item)) {
+                continue;
+            }
+            ProjectPeriodRequest normalized = new ProjectPeriodRequest();
+            normalized.setStageName(StringUtils.hasText(item.getStageName()) ? item.getStageName().trim() : item.getStageName());
+            normalized.setPlannedDate(item.getPlannedDate());
+            normalized.setActualDate(item.getActualDate());
+            normalizedPeriods.add(normalized);
+        }
+        return normalizedPeriods;
+    }
+
+    private boolean isEmptyProjectPeriod(ProjectPeriodRequest item) {
+        return !StringUtils.hasText(item.getStageName())
+                && item.getPlannedDate() == null
+                && item.getActualDate() == null;
+    }
+
+    private void appendLegacyProjectPeriod(List<ProjectPeriodRequest> periods, String stageName,
+                                           LocalDate plannedDate, LocalDate actualDate) {
+        if (plannedDate == null && actualDate == null) {
+            return;
+        }
+        ProjectPeriodRequest period = new ProjectPeriodRequest();
+        period.setStageName(stageName);
+        period.setPlannedDate(plannedDate);
+        period.setActualDate(actualDate);
+        periods.add(period);
+    }
+
+    private List<ProjectPaymentCycleRequest> normalizePaymentCycleRequests(ProjectUpsertRequest request) {
+        if (request.getPaymentCycles() != null) {
+            return normalizePaymentCycles(request.getPaymentCycles());
+        }
+
+        if (!StringUtils.hasText(request.getPaymentCycleName())
+                && request.getPaymentRatio() == null
+                && request.getPaymentAmount() == null
+                && request.getPlannedPaymentDate() == null
+                && request.getActualPaymentDate() == null) {
+            return Collections.emptyList();
+        }
+
+        ProjectPaymentCycleRequest paymentCycle = new ProjectPaymentCycleRequest();
+        paymentCycle.setStageName(StringUtils.hasText(request.getPaymentCycleName())
+                ? request.getPaymentCycleName() : "资金支付");
+        paymentCycle.setPaymentRatio(request.getPaymentRatio());
+        paymentCycle.setPaymentAmount(request.getPaymentAmount());
+        paymentCycle.setPlannedPaymentDate(request.getPlannedPaymentDate());
+        paymentCycle.setActualPaymentDate(request.getActualPaymentDate());
+        return normalizePaymentCycles(Collections.singletonList(paymentCycle));
+    }
+
+    private List<ProjectPaymentCycleRequest> normalizePaymentCycles(List<ProjectPaymentCycleRequest> paymentCycles) {
+        List<ProjectPaymentCycleRequest> normalizedPaymentCycles = new ArrayList<ProjectPaymentCycleRequest>();
+        for (ProjectPaymentCycleRequest item : paymentCycles) {
+            if (item == null || isEmptyPaymentCycle(item)) {
+                continue;
+            }
+            ProjectPaymentCycleRequest normalized = new ProjectPaymentCycleRequest();
+            normalized.setStageName(StringUtils.hasText(item.getStageName()) ? item.getStageName().trim() : item.getStageName());
+            normalized.setPaymentRatio(item.getPaymentRatio());
+            normalized.setPaymentAmount(item.getPaymentAmount());
+            normalized.setPlannedPaymentDate(item.getPlannedPaymentDate());
+            normalized.setActualPaymentDate(item.getActualPaymentDate());
+            normalizedPaymentCycles.add(normalized);
+        }
+        return normalizedPaymentCycles;
+    }
+
+    private boolean isEmptyPaymentCycle(ProjectPaymentCycleRequest item) {
+        return !StringUtils.hasText(item.getStageName())
+                && item.getPaymentRatio() == null
+                && item.getPaymentAmount() == null
+                && item.getPlannedPaymentDate() == null
+                && item.getActualPaymentDate() == null;
+    }
+
+    private List<Map<String, Object>> buildLegacyProjectPeriodViews(ProjectInfo projectInfo) {
+        List<Map<String, Object>> views = new ArrayList<Map<String, Object>>();
+        appendLegacyProjectPeriodView(views, "立项", projectInfo.getApprovalDate(), null, 1);
+        appendLegacyProjectPeriodView(views, "开工", projectInfo.getStartDate(), null, 2);
+        appendLegacyProjectPeriodView(views, "初验", projectInfo.getInitialDeliveryDate(), null, 3);
+        appendLegacyProjectPeriodView(views, "终验", projectInfo.getEndDate(), null, 4);
+        appendLegacyProjectPeriodView(views, "质保截止", projectInfo.getWarrantyEndDate(), null, 5);
+        return views;
+    }
+
+    private void appendLegacyProjectPeriodView(List<Map<String, Object>> views, String stageName,
+                                               LocalDate plannedDate, LocalDate actualDate, Integer sortOrder) {
+        if (plannedDate == null && actualDate == null) {
+            return;
+        }
+        Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("stageName", stageName);
+        view.put("plannedDate", plannedDate);
+        view.put("actualDate", actualDate);
+        view.put("sortOrder", sortOrder);
+        views.add(view);
+    }
+
+    private List<Map<String, Object>> buildLegacyPaymentCycleViews(ProjectInfo projectInfo) {
+        if (!StringUtils.hasText(projectInfo.getPaymentCycleName())
+                && projectInfo.getPaymentRatio() == null
+                && projectInfo.getPaymentAmount() == null
+                && projectInfo.getPlannedPaymentDate() == null
+                && projectInfo.getActualPaymentDate() == null) {
+            return Collections.emptyList();
+        }
+        Map<String, Object> view = new LinkedHashMap<String, Object>();
+        view.put("stageName", StringUtils.hasText(projectInfo.getPaymentCycleName())
+                ? projectInfo.getPaymentCycleName() : "资金支付");
+        view.put("paymentRatio", projectInfo.getPaymentRatio());
+        view.put("paymentAmount", projectInfo.getPaymentAmount());
+        view.put("plannedPaymentDate", projectInfo.getPlannedPaymentDate());
+        view.put("actualPaymentDate", projectInfo.getActualPaymentDate());
+        view.put("sortOrder", 1);
+        return Collections.singletonList(view);
     }
 
     private List<Long> normalizeIds(List<Long> ids) {
